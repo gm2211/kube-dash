@@ -1,6 +1,12 @@
-# kd Dashboard
+# kube-dash
 
-A local Kubernetes dashboard powered by your local `kubectl`. It serves a browser UI on localhost and uses your local `kubectl` config to read cluster resources.
+A local, client-side Kubernetes dashboard powered by your local `kubectl`. It serves a browser UI on localhost and uses your local `kubectl` config to read cluster resources.
+
+## Screenshots
+
+![kube-dash overview](docs/screenshots/overview.png)
+
+![kube-dash resource details](docs/screenshots/resource-details.png)
 
 ## Use it
 
