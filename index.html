@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kd Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" aria-label="Primary">
+        <div class="cluster-rail" id="contextRail" aria-label="Kubernetes contexts"></div>
+        <div class="sidebar-main">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">K</span>
+          <div>
+            <h1>kd Dashboard</h1>
+            <p>kubectl dashboard</p>
+          </div>
+        </div>
+
+        <div class="cluster-card">
+          <label class="label" for="contextSelect">Context</label>
+          <strong id="contextName">Connecting</strong>
+          <select id="contextSelect" aria-label="Kubernetes context">
+            <option value="">Current context</option>
+          </select>
+          <label class="label" for="namespaceFilter">Namespace</label>
+          <select id="namespaceFilter" aria-label="Namespace filter">
+            <option value="all">All namespaces</option>
+          </select>
+          <button class="text-button" id="refreshButton" type="button">Refresh</button>
+        </div>
+
+        <nav class="nav" aria-label="Resource views">
+          <span class="nav-group">Cluster</span>
+          <button class="nav-item active" data-view="overview" type="button">Overview</button>
+          <button class="nav-item" data-view="nodes" type="button">Nodes</button>
+          <span class="nav-group">Workloads</span>
+          <button class="nav-item" data-view="pods" type="button">Pods</button>
+          <button class="nav-item" data-view="deployments" type="button">Deployments</button>
+          <span class="nav-group">Discovery</span>
+          <button class="nav-item" data-view="services" type="button">Services</button>
+          <span class="nav-group">Activity</span>
+          <button class="nav-item" data-view="events" type="button">Events</button>
+          <button class="nav-item" data-view="commands" type="button">Commands</button>
+        </nav>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="topbar-title">
+            <div class="chrome-nav" aria-hidden="true">
+              <span>‹</span>
+              <span>›</span>
+            </div>
+            <div>
+              <p class="eyebrow">Local kubectl helper</p>
+              <h2 id="viewTitle">Overview</h2>
+            </div>
+          </div>
+          <div class="toolbar">
+            <label class="search">
+              <span aria-hidden="true">⌕</span>
+              <input id="searchInput" type="search" placeholder="Filter resources" />
+            </label>
+            <button class="primary" id="loadButton" type="button">Import JSON</button>
+          </div>
+        </header>
+
+        <section class="import-panel" id="importPanel" aria-label="Import Kubernetes resources">
+          <div>
+            <h3>Import from kubectl</h3>
+            <p>Fallback mode: paste kubectl JSON here if you opened the file without running kd.</p>
+          </div>
+          <div class="command-copy">
+            <code id="collectorCommand">kubectl get pods,deployments,services,nodes,events -A -o json</code>
+            <button class="icon-button" id="copyCollector" type="button" title="Copy collector command">Copy</button>
+          </div>
+          <textarea id="jsonInput" spellcheck="false" placeholder='Paste kubectl JSON output, for example: {"apiVersion":"v1","items":[...]}'></textarea>
+          <div class="panel-actions">
+            <label class="file-picker">
+              <input id="fileInput" type="file" accept=".json,application/json" />
+              Choose file
+            </label>
+            <button id="parseButton" type="button">Load resources</button>
+            <button id="clearButton" type="button">Clear</button>
+            <span id="importStatus" role="status"></span>
+          </div>
+        </section>
+
+        <section class="charts" id="charts" aria-label="Cluster charts"></section>
+
+        <section class="stats" id="stats"></section>
+
+        <section class="content-grid">
+          <div class="resource-panel">
+            <div class="panel-heading">
+              <h3 id="tableTitle">Resources</h3>
+              <span id="resultCount"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead id="tableHead"></thead>
+                <tbody id="tableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <aside class="details" id="detailsPanel" aria-label="Resource details">
+            <div class="empty-state">
+              <h3>Select a resource</h3>
+              <p>Details, labels, conditions, and available kubectl actions appear here.</p>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="commandDialog">
+      <form method="dialog">
+        <div class="dialog-head">
+          <h3 id="dialogTitle">kubectl command</h3>
+          <button class="icon-button" value="close" aria-label="Close" type="submit">×</button>
+        </div>
+        <p id="dialogHelp"></p>
+        <textarea id="commandOutput" readonly spellcheck="false"></textarea>
+        <div class="dialog-actions">
+          <button id="copyCommand" type="button">Copy command</button>
+          <button value="close" type="submit">Done</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="describeDialog" class="shell-dialog">
+      <div class="dialog-head">
+        <div>
+          <h3 id="describeTitle">Describe</h3>
+          <p id="describeStatus">Loading</p>
+        </div>
+        <button class="icon-button" id="closeDescribe" aria-label="Close describe" type="button">×</button>
+      </div>
+      <pre id="describeOutput" class="terminal-output logs-output" tabindex="0" aria-label="Resource description"></pre>
+      <div class="terminal-actions">
+        <button id="refreshDescribe" type="button">Refresh</button>
+        <button id="copyDescribe" type="button">Copy</button>
+      </div>
+    </dialog>
+
+    <dialog id="editDialog" class="edit-dialog">
+      <div class="dialog-head">
+        <div>
+          <h3 id="editTitle">Edit YAML</h3>
+          <p id="editStatus">Loading</p>
+        </div>
+        <button class="icon-button" id="closeEdit" aria-label="Close edit" type="button">×</button>
+      </div>
+      <textarea id="editYaml" class="yaml-editor" spellcheck="false" aria-label="Resource YAML"></textarea>
+      <pre id="applyOutput" class="terminal-output logs-output apply-output" aria-label="Apply output"></pre>
+      <div class="terminal-actions edit-actions">
+        <label class="apply-confirm">
+          <input id="confirmApply" type="checkbox" />
+          Enable apply
+        </label>
+        <button id="reloadYaml" type="button">Reload</button>
+        <button id="copyYaml" type="button">Copy YAML</button>
+        <button id="applyYaml" type="button" disabled>Apply</button>
+      </div>
+    </dialog>
+
+    <dialog id="runDialog" class="shell-dialog">
+      <div class="dialog-head">
+        <div>
+          <h3 id="runTitle">Command</h3>
+          <p id="runStatus">Ready</p>
+        </div>
+        <button class="icon-button" id="closeRun" aria-label="Close command output" type="button">×</button>
+      </div>
+      <pre id="runOutput" class="terminal-output logs-output" tabindex="0" aria-label="Command output"></pre>
+      <div class="terminal-actions">
+        <button id="stopRun" type="button">Stop</button>
+        <button id="copyRunOutput" type="button">Copy Output</button>
+        <button id="clearRunOutput" type="button">Clear</button>
+      </div>
+    </dialog>
+
+    <dialog id="shellDialog" class="shell-dialog">
+      <div class="dialog-head">
+        <div>
+          <h3 id="shellTitle">Shell</h3>
+          <p id="shellStatus">Connecting</p>
+        </div>
+        <button class="icon-button" id="closeShell" aria-label="Close shell" type="button">×</button>
+      </div>
+      <pre id="terminalOutput" class="terminal-output" tabindex="0" aria-label="Interactive shell output"></pre>
+      <div class="terminal-actions">
+        <button id="sendInterrupt" type="button">Ctrl+C</button>
+        <button id="sendClear" type="button">Clear</button>
+        <button id="focusTerminal" type="button">Focus</button>
+      </div>
+    </dialog>
+
+    <dialog id="logsDialog" class="shell-dialog">
+      <div class="dialog-head">
+        <div>
+          <h3 id="logsTitle">Logs</h3>
+          <p id="logsStatus">Connecting</p>
+        </div>
+        <button class="icon-button" id="closeLogs" aria-label="Close logs" type="button">×</button>
+      </div>
+      <pre id="logsOutput" class="terminal-output logs-output" tabindex="0" aria-label="Pod logs"></pre>
+      <div class="terminal-actions">
+        <button id="restartLogs" type="button">Reconnect</button>
+        <button id="clearLogs" type="button">Clear</button>
+      </div>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
