@@ -317,7 +317,7 @@ class Handler(SimpleHTTPRequestHandler):
         namespace = (query.get("namespace") or ["default"])[0]
         context = (query.get("context") or [""])[0]
         container = (query.get("container") or [""])[0]
-        shell = (query.get("shell") or ["/bin/sh"])[0]
+        requested_shell = (query.get("shell") or [""])[0]
 
         if not pod:
             self.send_error(400, "Missing pod")
@@ -326,7 +326,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.accept_websocket():
             return
 
-        command = [
+        exec_base = [
             "kubectl",
             *context_args(context),
             "exec",
@@ -336,11 +336,12 @@ class Handler(SimpleHTTPRequestHandler):
             namespace,
             *(["-c", container] if container else []),
             "--",
-            shell,
         ]
+        shells = [requested_shell] if requested_shell else ["/bin/sh", "/busybox/sh", "/bin/ash", "/bin/bash", "sh", "ash", "bash"]
 
         try:
-            self.run_shell(command)
+            command, shell = self.find_shell(exec_base, shells)
+            self.run_shell(command, shell)
         except Exception as exc:
             try:
                 self.write_ws_frame(1, f"\r\nkd shell error: {exc}\r\n".encode("utf-8"))
@@ -403,7 +404,32 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
 
-    def run_shell(self, command):
+    def find_shell(self, exec_base, shells):
+        errors = []
+        for shell in shells:
+            if not shell:
+                continue
+            command = [*exec_base, shell]
+            probe = [*exec_base, shell, "-c", "printf ok"]
+            try:
+                completed = subprocess.run(
+                    probe,
+                    cwd=APP_DIR,
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                    check=False,
+                )
+            except Exception as exc:
+                errors.append(f"{shell}: {exc}")
+                continue
+            if completed.returncode == 0:
+                return command, shell
+            message = (completed.stderr or completed.stdout).strip().splitlines()[-1:] or ["not available"]
+            errors.append(f"{shell}: {message[0]}")
+        raise RuntimeError("No interactive shell was found in this container. Tried: " + ", ".join(shell for shell in shells if shell))
+
+    def run_shell(self, command, shell):
         pid, fd = pty.fork()
         if pid == 0:
             os.environ.setdefault("TERM", "xterm")

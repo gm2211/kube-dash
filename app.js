@@ -938,7 +938,7 @@ function actionsFor(resource) {
       {
         id: "exec",
         label: "Shell",
-        help: "Open an interactive shell in the first container.",
+        help: "Open an interactive shell in the first container. kd tries /bin/sh, BusyBox sh, ash, and bash.",
         terminal: true,
         command: () => scoped("exec -it", " -- /bin/sh"),
       },
@@ -1126,11 +1126,15 @@ function openShell(resource) {
   state.shellSocket = new WebSocket(`${protocol}//${location.host}/api/shell?${params.toString()}`);
 
   state.shellSocket.addEventListener("open", () => {
-    selectors.shellStatus.textContent = `Connected to ${container || "first container"}`;
+    selectors.shellStatus.textContent = `Finding a shell in ${container || "first container"}`;
   });
 
   state.shellSocket.addEventListener("message", (event) => {
-    appendTerminalOutput(String(event.data));
+    const text = String(event.data);
+    if (text.startsWith("Connected shell")) {
+      selectors.shellStatus.textContent = text.split(":", 1)[0];
+    }
+    appendTerminalOutput(text);
   });
 
   state.shellSocket.addEventListener("close", () => {
