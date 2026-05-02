@@ -2,6 +2,7 @@ const state = {
   view: "overview",
   search: "",
   namespace: "all",
+  chartFilter: null,
   context: localStorage.getItem("kd-context") || "",
   contexts: [],
   apiAvailable: false,
@@ -94,6 +95,7 @@ function bindEvents() {
       state.view = button.dataset.view;
       state.selectedKey = null;
       document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item === button));
+      state.chartFilter = null;
       render();
     });
   });
@@ -425,24 +427,24 @@ function renderCharts() {
 
   selectors.charts.innerHTML = `
     ${pieCard("Resource Mix", [
-      ["Pods", state.resources.pods.length, "#3d90ce"],
-      ["Deployments", state.resources.deployments.length, "#00acc1"],
-      ["Services", state.resources.services.length, "#7e57c2"],
-      ["Nodes", state.resources.nodes.length, "#43a047"],
+      ["Pods", state.resources.pods.length, "#3d90ce", { kind: "resource", value: "pods", label: "Pods" }],
+      ["Deployments", state.resources.deployments.length, "#00acc1", { kind: "resource", value: "deployments", label: "Deployments" }],
+      ["Services", state.resources.services.length, "#7e57c2", { kind: "resource", value: "services", label: "Services" }],
+      ["Nodes", state.resources.nodes.length, "#43a047", { kind: "resource", value: "nodes", label: "Nodes" }],
     ])}
     ${pieCard("Pod Status", [
-      ["Running", runningPods, "#00a45a"],
-      ["Waiting", warningPods, "#f9ab00"],
-      ["Other", failedPods, "#d93025"],
+      ["Running", runningPods, "#00a45a", { kind: "podStatus", value: "good", label: "Running pods" }],
+      ["Waiting", warningPods, "#f9ab00", { kind: "podStatus", value: "warn", label: "Waiting pods" }],
+      ["Other", failedPods, "#d93025", { kind: "podStatus", value: "bad", label: "Other pods" }],
     ])}
     ${timeSeriesCard("CPU", "Cluster CPU percent", "cpuPercent", "%", metricError, requestSummary.cpu)}
     ${timeSeriesCard("Memory", "Cluster memory percent", "memoryPercent", "%", metricError, requestSummary.memory)}
   `;
+  bindChartFilters();
 }
 
 function pieCard(title, segments) {
   const total = segments.reduce((sum, [, value]) => sum + value, 0);
-  const gradient = pieGradient(segments);
   return `
     <article class="chart-card">
       <div class="chart-head">
@@ -450,21 +452,62 @@ function pieCard(title, segments) {
         <span>${total} total</span>
       </div>
       <div class="pie-layout">
-        <div class="pie" style="background: ${gradient};" aria-hidden="true"></div>
+        ${pieSvg(segments, total)}
         <div class="legend">
           ${segments
-            .map(
-              ([label, value, color]) => `
-                <div class="legend-row">
-                  <span class="swatch" style="background:${color}"></span>
-                  <span>${escapeHtml(label)}</span>
-                  <strong>${value}</strong>
-                </div>`,
-            )
+            .map(([label, value, color, filter]) => legendRow(label, value, color, filter))
             .join("")}
         </div>
       </div>
     </article>`;
+}
+
+function pieSvg(segments, total) {
+  if (!total) return `<div class="pie empty" aria-hidden="true"></div>`;
+  let cursor = -90;
+  const paths = segments
+    .map(([label, value, color, filter]) => {
+      if (!value) return "";
+      const start = cursor;
+      cursor += (value / total) * 360;
+      const active = isChartFilterActive(filter);
+      const dimmed = state.chartFilter && filter && !active ? " dimmed" : "";
+      const attrs = filterAttributes(filter, label);
+      return `<path class="pie-segment${active ? " active" : ""}${dimmed}" d="${pieSlicePath(start, cursor)}" fill="${color}" ${attrs}></path>`;
+    })
+    .join("");
+  return `<svg class="pie-svg" viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(total)} total">${paths}</svg>`;
+}
+
+function legendRow(label, value, color, filter) {
+  const active = isChartFilterActive(filter);
+  const dimmed = state.chartFilter && filter && !active ? " dimmed" : "";
+  const attrs = filterAttributes(filter, label);
+  return `
+    <button class="legend-row${active ? " active" : ""}${dimmed}" type="button" ${attrs}>
+      <span class="swatch" style="background:${color}"></span>
+      <span>${escapeHtml(label)}</span>
+      <strong>${value}</strong>
+    </button>`;
+}
+
+function filterAttributes(filter, label) {
+  if (!filter) return "";
+  return `data-chart-filter="${escapeHtml(filter.kind)}" data-chart-value="${escapeHtml(filter.value)}" data-chart-label="${escapeHtml(filter.label || label)}" tabindex="0"`;
+}
+
+function pieSlicePath(startDeg, endDeg) {
+  const center = 50;
+  const radius = 42;
+  const start = polarPoint(center, center, radius, endDeg);
+  const end = polarPoint(center, center, radius, startDeg);
+  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
+  return `M ${center} ${center} L ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${radius} ${radius} 0 ${largeArc} 0 ${end.x.toFixed(3)} ${end.y.toFixed(3)} Z`;
+}
+
+function polarPoint(cx, cy, radius, degrees) {
+  const radians = (degrees * Math.PI) / 180;
+  return { x: cx + radius * Math.cos(radians), y: cy + radius * Math.sin(radians) };
 }
 
 function pieGradient(segments) {
@@ -477,6 +520,39 @@ function pieGradient(segments) {
     return `${color} ${start}deg ${cursor}deg`;
   });
   return `conic-gradient(${stops.join(", ")})`;
+}
+
+function bindChartFilters() {
+  selectors.charts.querySelectorAll("[data-chart-filter]").forEach((item) => {
+    item.addEventListener("click", () => applyChartFilter(item.dataset.chartFilter, item.dataset.chartValue, item.dataset.chartLabel));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        applyChartFilter(item.dataset.chartFilter, item.dataset.chartValue, item.dataset.chartLabel);
+      }
+    });
+  });
+}
+
+function applyChartFilter(kind, value, label) {
+  const same = state.chartFilter?.kind === kind && state.chartFilter?.value === value;
+  state.chartFilter = same ? null : { kind, value, label };
+  state.selectedKey = null;
+  renderCharts();
+  renderTable();
+  renderDetails();
+}
+
+function isChartFilterActive(filter) {
+  return Boolean(filter && state.chartFilter?.kind === filter.kind && state.chartFilter?.value === filter.value);
+}
+
+function clearChartFilter() {
+  state.chartFilter = null;
+  state.selectedKey = null;
+  renderCharts();
+  renderTable();
+  renderDetails();
 }
 
 function timeSeriesCard(title, subtitle, field, unit, error, fallback) {
@@ -646,7 +722,10 @@ function renderTable() {
 
   const rows = filteredResources(view === "overview" ? "all" : view);
   const columns = tableColumns(view);
-  selectors.resultCount.textContent = `${rows.length} shown`;
+  selectors.resultCount.innerHTML = chartFilterApplies()
+    ? `${rows.length} shown · ${escapeHtml(state.chartFilter.label)} <button class="clear-filter" type="button">Clear</button>`
+    : `${rows.length} shown`;
+  selectors.resultCount.querySelector(".clear-filter")?.addEventListener("click", clearChartFilter);
   selectors.tableHead.innerHTML = `<tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}</tr>`;
   if (state.loading) {
     selectors.tableBody.innerHTML = `
@@ -783,8 +862,19 @@ function filteredResources(kind) {
     const text = `${resource.kind} ${resource.name} ${resource.namespace} ${Object.entries(resource.labels)
       .map(([key, value]) => `${key}=${value}`)
       .join(" ")}`.toLowerCase();
-    return inNamespace && (!state.search || text.includes(state.search));
+    return inNamespace && chartFilterMatches(resource) && (!state.search || text.includes(state.search));
   });
+}
+
+function chartFilterApplies() {
+  return Boolean(state.chartFilter && views[state.view].kind === "overview");
+}
+
+function chartFilterMatches(resource) {
+  if (!chartFilterApplies()) return true;
+  if (state.chartFilter.kind === "resource") return resource.type === state.chartFilter.value;
+  if (state.chartFilter.kind === "podStatus") return resource.type === "pods" && podStatus(resource).tone === state.chartFilter.value;
+  return true;
 }
 
 function renderDetails() {

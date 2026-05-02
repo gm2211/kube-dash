@@ -497,6 +497,82 @@ textarea {
   border-radius: 2px;
 }
 
+
+
+.pie-svg {
+  width: 110px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: visible;
+  filter: drop-shadow(0 0 20px rgba(90, 199, 223, 0.08));
+}
+
+.pie-segment {
+  cursor: pointer;
+  transform-origin: 50px 50px;
+  transition: opacity 140ms ease, transform 140ms ease, filter 140ms ease;
+  stroke: rgba(5, 8, 8, 0.72);
+  stroke-width: 1.2;
+}
+
+.pie-segment:hover,
+.pie-segment:focus-visible {
+  opacity: 1;
+  transform: scale(1.035);
+  filter: brightness(1.18) drop-shadow(0 0 8px rgba(90, 199, 223, 0.34));
+  outline: none;
+}
+
+.pie-segment.active {
+  transform: scale(1.045);
+  filter: brightness(1.2) drop-shadow(0 0 10px rgba(90, 199, 223, 0.44));
+}
+
+.pie-segment.dimmed,
+.legend-row.dimmed {
+  opacity: 0.38;
+}
+
+.legend-row {
+  border: 0;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.legend-row:hover,
+.legend-row:focus-visible,
+.legend-row.active {
+  background: rgba(90, 199, 223, 0.08);
+  outline: none;
+}
+
+.legend-row.active {
+  color: var(--heading);
+}
+
+.clear-filter {
+  min-height: 24px;
+  margin-left: 8px;
+  padding: 0 8px;
+  border: 1px solid rgba(90, 199, 223, 0.28);
+  border-radius: 4px;
+  background: rgba(90, 199, 223, 0.08);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.clear-filter:hover,
+.clear-filter:focus-visible {
+  background: rgba(90, 199, 223, 0.16);
+  outline: none;
+}
+
 .sparkline {
   width: 100%;
   min-height: 112px;
