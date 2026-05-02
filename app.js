@@ -474,6 +474,9 @@ function pieSvg(segments, total, idSeed = "chart") {
       const active = isChartFilterActive(filter);
       const dimmed = state.chartFilter && filter && !active ? " dimmed" : "";
       const attrs = filterAttributes(filter, label);
+      if (value === total) {
+        return `<circle class="pie-segment${active ? " active" : ""}${dimmed}" cx="50" cy="50" r="42" fill="${color}" ${attrs}></circle>`;
+      }
       return `<path class="pie-segment${active ? " active" : ""}${dimmed}" d="${pieSlicePath(start, cursor)}" fill="${color}" ${attrs}></path>`;
     })
     .join("");
