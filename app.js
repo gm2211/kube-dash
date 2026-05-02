@@ -1166,8 +1166,10 @@ function deleteConfirmation(resource) {
     `Context: ${context}`,
     "",
     "This action runs kubectl delete and can remove live cluster resources.",
+    "",
+    `Type ${resource.name} to confirm.`,
   ].join("\n");
-  return window.confirm(message);
+  return window.prompt(message, "") === resource.name;
 }
 
 async function runCommand(title, command, stream = false, options = {}) {
