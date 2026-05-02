@@ -931,7 +931,7 @@ function renderDetails() {
         openEdit(resource);
         return;
       }
-      showCommand(action.label, action.help, action.command(resource));
+      runResourceAction(action, resource);
     });
   });
 }
@@ -1007,6 +1007,7 @@ function actionsFor(resource) {
       label: "Get YAML",
       help: "Export the current live object as YAML.",
       command: () => scoped("get", " -o yaml"),
+      formatter: formatYamlOutput,
     },
     {
       id: "delete",
@@ -1074,6 +1075,7 @@ function actionsFor(resource) {
         help: "List endpoints associated with this service name.",
         command: () =>
           `${kubectl} get endpoints ${shellQuote(resource.name)}${resource.namespace ? ` -n ${shellQuote(resource.namespace)}` : ""} -o wide`,
+        formatter: formatTableOutput,
       },
       ...base,
     ];
@@ -1117,7 +1119,20 @@ function showCommand(title, help, command) {
   selectors.commandDialog.showModal();
 }
 
-async function runCommand(title, command, stream = false) {
+function runResourceAction(action, resource) {
+  const command = action.command(resource);
+  if (!state.apiAvailable) {
+    showCommand(action.label, "Run kd to execute this action in the browser.", command);
+    return;
+  }
+  if (command.includes("<") || command.includes(">")) {
+    showCommand(action.label, "Replace placeholders before running this action.", command);
+    return;
+  }
+  runCommand(action.label, command, Boolean(action.stream), { showCommand: false, formatter: action.formatter });
+}
+
+async function runCommand(title, command, stream = false, options = {}) {
   if (!state.apiAvailable) {
     showCommand(title, "Run kd to execute commands in the browser, or copy this command.", command);
     return;
@@ -1130,8 +1145,8 @@ async function runCommand(title, command, stream = false) {
 
   closeRun();
   selectors.runTitle.textContent = title;
-  selectors.runStatus.textContent = command;
-  selectors.runOutput.textContent = `$ ${command}\n\n`;
+  selectors.runStatus.textContent = options.showCommand === false ? "Running" : command;
+  selectors.runOutput.textContent = options.showCommand === false ? "" : `$ ${command}\n\n`;
   selectors.runDialog.showModal();
   selectors.runOutput.focus();
 
@@ -1147,12 +1162,23 @@ async function runCommand(title, command, stream = false) {
       body: JSON.stringify({ command }),
     });
     const data = await response.json();
-    appendOutput(selectors.runOutput, data.output || "");
+    const output = data.output || "";
+    appendOutput(selectors.runOutput, options.formatter ? options.formatter(output) : output);
     selectors.runStatus.textContent = data.exitCode === 0 ? "Completed" : `Exited ${data.exitCode}`;
   } catch (error) {
     appendOutput(selectors.runOutput, error.message);
     selectors.runStatus.textContent = "Failed";
   }
+}
+
+
+function formatYamlOutput(output) {
+  return output.trim() ? output : "No YAML returned.\n";
+}
+
+function formatTableOutput(output) {
+  const text = output.trimEnd();
+  return text ? `${text}\n` : "No rows returned.\n";
 }
 
 function runStreamingCommand(command) {
