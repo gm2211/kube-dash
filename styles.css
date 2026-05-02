@@ -1936,7 +1936,8 @@ th {
 }
 
 .details {
-  top: 76px;
+  position: static;
+  top: auto;
   padding: 14px;
 }
 
