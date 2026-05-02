@@ -50,6 +50,8 @@ kd
 
 The dashboard opens at `http://localhost:8765`, discovers your kube contexts, and loads resources from the selected context automatically.
 
+Generated Kubernetes names are grouped by shared prefix by default, so related pods such as replica siblings stay together in the table. The toolbar toggle persists through the local `kd` helper in `~/.config/kube-dash/preferences.json`, with browser local storage as the fallback when opening the static HTML directly.
+
 Other launcher commands:
 
 ```sh

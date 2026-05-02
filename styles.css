@@ -292,6 +292,34 @@ select:disabled {
   justify-content: flex-end;
 }
 
+.toggle-control {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.toggle-control input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.toggle-control:hover,
+.toggle-control:focus-within {
+  border-color: var(--accent);
+  color: var(--heading);
+}
+
 .search {
   width: min(360px, 34vw);
   display: flex;
@@ -816,6 +844,45 @@ tbody tr:hover {
 
 tbody tr.selected {
   background: var(--accent-soft);
+}
+
+.group-row {
+  cursor: default;
+}
+
+.group-row td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  background: rgba(61, 144, 206, 0.06);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.group-row span,
+.group-row strong,
+.group-row em {
+  display: inline-block;
+  margin-right: 10px;
+  font-style: normal;
+}
+
+.group-row span {
+  color: var(--heading);
+}
+
+.group-row strong {
+  color: var(--accent);
+}
+
+tbody tr.grouped .name-cell {
+  padding-left: 14px;
+}
+
+tbody tr.group-row:hover {
+  background: transparent;
 }
 
 .name-cell {
@@ -1622,6 +1689,7 @@ th {
   color: var(--heading);
 }
 
+.toggle-control,
 .search,
 select,
 textarea,
@@ -1645,6 +1713,13 @@ select:hover {
     linear-gradient(45deg, transparent 50%, var(--accent) 50%) calc(100% - 22px) 18px / 7px 7px no-repeat,
     linear-gradient(135deg, var(--accent) 50%, transparent 50%) calc(100% - 16px) 18px / 7px 7px no-repeat,
     rgba(12, 18, 19, 0.95);
+}
+
+.toggle-control:hover,
+.toggle-control:focus-within {
+  background: rgba(12, 18, 19, 0.95);
+  border-color: rgba(90, 199, 223, 0.42);
+  color: var(--heading);
 }
 
 .search input {

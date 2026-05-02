@@ -3,6 +3,7 @@ const state = {
   search: "",
   namespace: "all",
   sorts: {},
+  groupByPrefix: localStorage.getItem("kd-group-by-prefix") !== "false",
   chartFilter: null,
   context: localStorage.getItem("kd-context") || "",
   contexts: [],
@@ -48,6 +49,7 @@ const selectors = {
   charts: document.querySelector("#charts"),
   stats: document.querySelector("#stats"),
   searchInput: document.querySelector("#searchInput"),
+  groupToggle: document.querySelector("#groupToggle"),
   namespaceFilter: document.querySelector("#namespaceFilter"),
   importPanel: document.querySelector("#importPanel"),
   jsonInput: document.querySelector("#jsonInput"),
@@ -140,6 +142,13 @@ function bindEvents() {
     renderTable();
   });
 
+  selectors.groupToggle.checked = state.groupByPrefix;
+  selectors.groupToggle.addEventListener("change", () => {
+    state.groupByPrefix = selectors.groupToggle.checked;
+    persistPreferences();
+    renderTable();
+  });
+
   selectors.namespaceFilter.addEventListener("change", (event) => {
     state.namespace = event.target.value;
     state.selectedKey = null;
@@ -223,6 +232,7 @@ async function bootApi() {
     if (!response.ok) throw new Error("The kd helper is not running.");
     const data = await response.json();
     state.apiAvailable = true;
+    await loadPreferences();
     state.contexts = data.contexts || [];
     const savedContext = localStorage.getItem("kd-context") || "";
     state.context = state.contexts.includes(savedContext) ? savedContext : data.currentContext || state.contexts[0] || "";
@@ -236,6 +246,36 @@ async function bootApi() {
     state.lastError = "Run `kd` from a terminal to load resources automatically.";
     selectors.importPanel.classList.remove("collapsed");
     render();
+  }
+}
+
+async function loadPreferences() {
+  if (!state.apiAvailable) return;
+  try {
+    const response = await fetch("/api/preferences", { cache: "no-store" });
+    if (!response.ok) throw new Error("Preferences unavailable.");
+    const data = await response.json();
+    if (typeof data.preferences?.groupByPrefix === "boolean") {
+      state.groupByPrefix = data.preferences.groupByPrefix;
+      localStorage.setItem("kd-group-by-prefix", String(state.groupByPrefix));
+      selectors.groupToggle.checked = state.groupByPrefix;
+    }
+  } catch (error) {
+    selectors.groupToggle.checked = state.groupByPrefix;
+  }
+}
+
+async function persistPreferences() {
+  localStorage.setItem("kd-group-by-prefix", String(state.groupByPrefix));
+  if (!state.apiAvailable) return;
+  try {
+    await fetch("/api/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferences: { groupByPrefix: state.groupByPrefix } }),
+    });
+  } catch (error) {
+    // Local storage already preserves the preference for file/fallback mode.
   }
 }
 
@@ -801,22 +841,91 @@ function renderTable() {
     return;
   }
 
-  selectors.tableBody.innerHTML = sortedRows
-    .map(
-      (resource) => `
-        <tr class="${resource.key === state.selectedKey ? "selected" : ""}" data-key="${escapeHtml(resource.key)}">
-          ${columns.map((column) => `<td>${column.render(resource)}</td>`).join("")}
-        </tr>`,
-    )
-    .join("");
+  selectors.tableBody.innerHTML = tableRows(sortedRows, columns).join("");
 
-  selectors.tableBody.querySelectorAll("tr").forEach((row) => {
+  selectors.tableBody.querySelectorAll("tr[data-key]").forEach((row) => {
     row.addEventListener("click", () => {
       state.selectedKey = row.dataset.key;
       renderTable();
       renderDetails();
     });
   });
+}
+
+function tableRows(rows, columns) {
+  if (!state.groupByPrefix) return rows.map((resource) => resourceRow(resource, columns));
+
+  const groups = buildPrefixGroups(rows);
+  const renderedGroups = new Set();
+  const output = [];
+  rows.forEach((resource) => {
+    const group = groups.get(groupKey(resource));
+    if (!group || group.items.length < 2) {
+      output.push(resourceRow(resource, columns));
+      return;
+    }
+    if (renderedGroups.has(group.key)) return;
+    renderedGroups.add(group.key);
+    output.push(groupRow(group, columns.length));
+    group.items.forEach((item) => output.push(resourceRow(item, columns, " grouped")));
+  });
+  return output;
+}
+
+function resourceRow(resource, columns, extraClass = "") {
+  return `
+    <tr class="${resource.key === state.selectedKey ? "selected" : ""}${extraClass}" data-key="${escapeHtml(resource.key)}">
+      ${columns.map((column) => `<td>${column.render(resource)}</td>`).join("")}
+    </tr>`;
+}
+
+function groupRow(group, columnCount) {
+  const namespace = group.namespace ? ` · ${group.namespace}` : "";
+  return `
+    <tr class="group-row">
+      <td colspan="${columnCount}">
+        <span>${escapeHtml(group.prefix)}</span>
+        <strong>${group.items.length}</strong>
+        <em>${escapeHtml(`${group.kind}${namespace}`)}</em>
+      </td>
+    </tr>`;
+}
+
+function buildPrefixGroups(rows) {
+  const groups = new Map();
+  rows.forEach((resource) => {
+    const prefix = resourcePrefix(resource.name);
+    const key = groupKey(resource, prefix);
+    const group = groups.get(key) || {
+      key,
+      prefix,
+      kind: resource.kind,
+      namespace: resource.namespace,
+      items: [],
+    };
+    group.items.push(resource);
+    groups.set(key, group);
+  });
+  return groups;
+}
+
+function groupKey(resource, prefix = resourcePrefix(resource.name)) {
+  return `${resource.type}:${resource.namespace || "cluster"}:${prefix}`;
+}
+
+function resourcePrefix(name) {
+  const parts = String(name || "").split("-").filter(Boolean);
+  if (parts.length < 2) return String(name || "");
+
+  let end = parts.length;
+  if (isGeneratedNamePart(parts[end - 1])) end -= 1;
+  if (end > 1 && isGeneratedNamePart(parts[end - 1])) end -= 1;
+  if (end === parts.length || end < 1) return String(name || "");
+  return parts.slice(0, end).join("-");
+}
+
+function isGeneratedNamePart(value) {
+  return /^[a-z0-9]{5,12}$/.test(value || "") && /[0-9]/.test(value || "");
 }
 
 function tableColumns(view) {

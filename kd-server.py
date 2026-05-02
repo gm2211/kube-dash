@@ -17,6 +17,9 @@ from urllib.parse import parse_qs, urlparse
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 RESOURCE_TYPES = "pods,deployments,services,nodes,events"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+CONFIG_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "kube-dash")
+PREFERENCES_PATH = os.path.join(CONFIG_DIR, "preferences.json")
+DEFAULT_PREFERENCES = {"groupByPrefix": True}
 
 
 def kubectl(args, timeout=45):
@@ -51,6 +54,30 @@ def list_contexts():
         return [line.strip() for line in output.splitlines() if line.strip()]
     except Exception:
         return []
+
+
+def read_preferences():
+    try:
+        with open(PREFERENCES_PATH, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:
+        data = {}
+    preferences = dict(DEFAULT_PREFERENCES)
+    if isinstance(data, dict):
+        if "groupByPrefix" in data:
+            preferences["groupByPrefix"] = bool(data["groupByPrefix"])
+    return preferences
+
+
+def write_preferences(preferences):
+    current = read_preferences()
+    if isinstance(preferences, dict) and "groupByPrefix" in preferences:
+        current["groupByPrefix"] = bool(preferences["groupByPrefix"])
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(PREFERENCES_PATH, "w", encoding="utf-8") as handle:
+        json.dump(current, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    return current
 
 
 def parse_cpu(value):
@@ -176,6 +203,10 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json({"currentContext": current_context(), "contexts": list_contexts()})
             return
 
+        if parsed.path == "/api/preferences":
+            self.write_json({"preferences": read_preferences(), "path": PREFERENCES_PATH})
+            return
+
         if parsed.path == "/api/resources":
             query = parse_qs(parsed.query)
             context = (query.get("context") or [""])[0]
@@ -206,6 +237,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/apply":
             self.handle_apply()
+            return
+        if parsed.path == "/api/preferences":
+            self.handle_preferences()
             return
         self.send_error(404)
 
@@ -270,6 +304,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json({"exitCode": 124, "output": output + "\nApply timed out."}, status=504)
         except Exception as exc:
             self.write_json({"exitCode": 1, "output": str(exc)}, status=400)
+
+    def handle_preferences(self):
+        try:
+            payload = self.read_json_body()
+            preferences = write_preferences(payload.get("preferences", payload))
+            self.write_json({"preferences": preferences, "path": PREFERENCES_PATH})
+        except Exception as exc:
+            self.write_json({"error": str(exc)}, status=400)
 
     def handle_describe(self, parsed):
         query = parse_qs(parsed.query)
