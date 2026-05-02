@@ -169,6 +169,38 @@
       </div>
     </dialog>
 
+    <dialog id="deleteDialog" class="delete-dialog">
+      <div class="dialog-head">
+        <div>
+          <h3 id="deleteTitle">Delete resource</h3>
+          <p id="deleteStatus">This action runs kubectl delete.</p>
+        </div>
+        <button class="icon-button" id="closeDelete" aria-label="Close delete confirmation" type="button">×</button>
+      </div>
+      <div class="delete-summary" aria-label="Resource to delete">
+        <div>
+          <span>Name</span>
+          <strong id="deleteName"></strong>
+        </div>
+        <div>
+          <span>Namespace</span>
+          <strong id="deleteNamespace"></strong>
+        </div>
+        <div>
+          <span>Context</span>
+          <strong id="deleteContext"></strong>
+        </div>
+      </div>
+      <label class="delete-confirm-label" for="deleteConfirmName">
+        Type the resource name to confirm
+      </label>
+      <input id="deleteConfirmName" class="delete-confirm-input" autocomplete="off" spellcheck="false" />
+      <div class="terminal-actions delete-actions">
+        <button id="cancelDelete" type="button">Cancel</button>
+        <button id="confirmDelete" class="danger-button" type="button" disabled>Delete</button>
+      </div>
+    </dialog>
+
     <dialog id="runDialog" class="shell-dialog">
       <div class="dialog-head">
         <div>

@@ -1013,6 +1013,7 @@ tbody tr.selected {
 #commandDialog::backdrop,
 #describeDialog::backdrop,
 #editDialog::backdrop,
+#deleteDialog::backdrop,
 #runDialog::backdrop,
 #shellDialog::backdrop,
 #logsDialog::backdrop {
@@ -1106,6 +1107,90 @@ tbody tr.selected {
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.delete-dialog {
+  width: min(620px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 18px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.delete-dialog[open] {
+  display: grid;
+  gap: 14px;
+}
+
+.delete-summary {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface-raised);
+}
+
+.delete-summary div {
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.delete-summary span,
+.delete-confirm-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.delete-summary strong {
+  min-width: 0;
+  color: var(--heading);
+  overflow-wrap: anywhere;
+}
+
+.delete-confirm-label {
+  margin-top: 4px;
+}
+
+.delete-confirm-input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text);
+  outline: 2px solid transparent;
+}
+
+.delete-confirm-input:focus {
+  border-color: var(--accent);
+  outline-color: rgba(90, 199, 223, 0.2);
+}
+
+.danger-button {
+  border-color: rgba(255, 111, 134, 0.45);
+  color: var(--bad);
+}
+
+.danger-button:hover,
+.danger-button:focus-visible {
+  background: rgba(255, 111, 134, 0.12);
+  border-color: rgba(255, 111, 134, 0.72);
+}
+
+.danger-button:disabled {
+  color: var(--muted-soft);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: not-allowed;
 }
 
 .edit-dialog[open] {
@@ -1508,7 +1593,8 @@ select:hover {
 .command-item,
 #commandDialog,
 .shell-dialog,
-.edit-dialog {
+.edit-dialog,
+.delete-dialog {
   background: rgba(15, 20, 21, 0.88);
   border: 1px solid rgba(90, 199, 223, 0.18);
   box-shadow: var(--shadow);
@@ -1620,7 +1706,8 @@ tbody tr.selected {
 .summary-item,
 .summary-message,
 .summary-list div,
-.chart-empty.compact {
+.chart-empty.compact,
+.delete-summary {
   background: rgba(255, 255, 255, 0.035);
   border-color: rgba(255, 255, 255, 0.09);
 }

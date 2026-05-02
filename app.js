@@ -15,6 +15,7 @@ const state = {
   runSocket: null,
   describeResource: null,
   editResource: null,
+  deleteConfirmation: null,
   metricsTimer: null,
   metrics: { nodes: [], pods: [], errors: [] },
   metricSamples: [],
@@ -69,6 +70,14 @@ const selectors = {
   applyOutput: document.querySelector("#applyOutput"),
   confirmApply: document.querySelector("#confirmApply"),
   applyYaml: document.querySelector("#applyYaml"),
+  deleteDialog: document.querySelector("#deleteDialog"),
+  deleteTitle: document.querySelector("#deleteTitle"),
+  deleteStatus: document.querySelector("#deleteStatus"),
+  deleteName: document.querySelector("#deleteName"),
+  deleteNamespace: document.querySelector("#deleteNamespace"),
+  deleteContext: document.querySelector("#deleteContext"),
+  deleteConfirmName: document.querySelector("#deleteConfirmName"),
+  confirmDelete: document.querySelector("#confirmDelete"),
   runDialog: document.querySelector("#runDialog"),
   runTitle: document.querySelector("#runTitle"),
   runStatus: document.querySelector("#runStatus"),
@@ -181,6 +190,18 @@ function bindEvents() {
   });
   selectors.applyYaml.addEventListener("click", applyYaml);
   selectors.editDialog.addEventListener("close", closeEdit);
+
+  document.querySelector("#closeDelete").addEventListener("click", () => closeDeleteConfirmation(false));
+  document.querySelector("#cancelDelete").addEventListener("click", () => closeDeleteConfirmation(false));
+  selectors.confirmDelete.addEventListener("click", () => closeDeleteConfirmation(true));
+  selectors.deleteConfirmName.addEventListener("input", updateDeleteConfirmation);
+  selectors.deleteConfirmName.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !selectors.confirmDelete.disabled) {
+      event.preventDefault();
+      closeDeleteConfirmation(true);
+    }
+  });
+  selectors.deleteDialog.addEventListener("close", () => closeDeleteConfirmation(false));
 
   document.querySelector("#closeRun").addEventListener("click", closeRun);
   document.querySelector("#stopRun").addEventListener("click", stopRun);
@@ -1140,9 +1161,9 @@ function showCommand(title, help, command) {
   selectors.commandDialog.showModal();
 }
 
-function runResourceAction(action, resource) {
+async function runResourceAction(action, resource) {
   const command = action.command(resource);
-  if (action.confirm && !action.confirm(resource, command)) {
+  if (action.confirm && !(await action.confirm(resource, command))) {
     return;
   }
   if (!state.apiAvailable) {
@@ -1157,19 +1178,35 @@ function runResourceAction(action, resource) {
 }
 
 function deleteConfirmation(resource) {
-  const namespace = resource.namespace || "cluster";
-  const context = state.context || "current context";
-  const message = [
-    `Delete ${resource.kind} "${resource.name}"?`,
-    "",
-    `Namespace: ${namespace}`,
-    `Context: ${context}`,
-    "",
-    "This action runs kubectl delete and can remove live cluster resources.",
-    "",
-    `Type ${resource.name} to confirm.`,
-  ].join("\n");
-  return window.prompt(message, "") === resource.name;
+  selectors.deleteTitle.textContent = `Delete ${resource.kind}`;
+  selectors.deleteStatus.textContent = "This action runs kubectl delete and can remove live cluster resources.";
+  selectors.deleteName.textContent = resource.name;
+  selectors.deleteNamespace.textContent = resource.namespace || "cluster";
+  selectors.deleteContext.textContent = state.context || "current context";
+  selectors.deleteConfirmName.value = "";
+  selectors.confirmDelete.disabled = true;
+  selectors.confirmDelete.textContent = "Delete";
+
+  return new Promise((resolve) => {
+    state.deleteConfirmation = { expected: resource.name, resolve };
+    selectors.deleteDialog.showModal();
+    selectors.deleteConfirmName.focus();
+  });
+}
+
+function updateDeleteConfirmation() {
+  const expected = state.deleteConfirmation?.expected || "";
+  const matches = selectors.deleteConfirmName.value === expected;
+  selectors.confirmDelete.disabled = !matches;
+}
+
+function closeDeleteConfirmation(confirmed) {
+  const pending = state.deleteConfirmation;
+  if (!pending) return;
+  const matches = selectors.deleteConfirmName.value === pending.expected;
+  state.deleteConfirmation = null;
+  if (selectors.deleteDialog.open) selectors.deleteDialog.close();
+  pending.resolve(Boolean(confirmed && matches));
 }
 
 async function runCommand(title, command, stream = false, options = {}) {
