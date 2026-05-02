@@ -4,9 +4,9 @@ A local, client-side Kubernetes dashboard powered by your local `kubectl`. It se
 
 ## Screenshots
 
-![kube-dash overview](docs/screenshots/overview.png)
+![kube-dash overview with resource charts and live kubectl data](docs/screenshots/overview.png)
 
-![kube-dash resource details](docs/screenshots/resource-details.png)
+![kube-dash pod list with selected resource details and kubectl actions](docs/screenshots/resource-details.png)
 
 ## Quick Install
 
