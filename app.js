@@ -452,7 +452,7 @@ function pieCard(title, segments) {
         <span>${total} total</span>
       </div>
       <div class="pie-layout">
-        ${pieSvg(segments, total)}
+        ${pieSvg(segments, total, title)}
         <div class="legend">
           ${segments
             .map(([label, value, color, filter]) => legendRow(label, value, color, filter))
@@ -462,8 +462,9 @@ function pieCard(title, segments) {
     </article>`;
 }
 
-function pieSvg(segments, total) {
+function pieSvg(segments, total, idSeed = "chart") {
   if (!total) return `<div class="pie empty" aria-hidden="true"></div>`;
+  const gradientId = `pie-sheen-${slugId(idSeed)}`;
   let cursor = -90;
   const paths = segments
     .map(([label, value, color, filter]) => {
@@ -476,7 +477,19 @@ function pieSvg(segments, total) {
       return `<path class="pie-segment${active ? " active" : ""}${dimmed}" d="${pieSlicePath(start, cursor)}" fill="${color}" ${attrs}></path>`;
     })
     .join("");
-  return `<svg class="pie-svg" viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(total)} total">${paths}</svg>`;
+  return `<svg class="pie-svg" viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(total)} total">
+    <defs>
+      <radialGradient id="${gradientId}" cx="34%" cy="26%" r="68%">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.24"></stop>
+        <stop offset="38%" stop-color="#ffffff" stop-opacity="0.07"></stop>
+        <stop offset="100%" stop-color="#ffffff" stop-opacity="0"></stop>
+      </radialGradient>
+    </defs>
+    <circle class="pie-halo" cx="50" cy="50" r="42"></circle>
+    <g class="pie-slices">${paths}</g>
+    <circle class="pie-sheen" cx="50" cy="50" r="42" fill="url(#${gradientId})"></circle>
+    <circle class="pie-rim" cx="50" cy="50" r="42"></circle>
+  </svg>`;
 }
 
 function legendRow(label, value, color, filter) {
@@ -487,7 +500,7 @@ function legendRow(label, value, color, filter) {
     <button class="legend-row${active ? " active" : ""}${dimmed}" type="button" ${attrs}>
       <span class="swatch" style="background:${color}"></span>
       <span>${escapeHtml(label)}</span>
-      <strong>${value}</strong>
+      <strong>${escapeHtml(String(value))}</strong>
     </button>`;
 }
 
@@ -510,16 +523,8 @@ function polarPoint(cx, cy, radius, degrees) {
   return { x: cx + radius * Math.cos(radians), y: cy + radius * Math.sin(radians) };
 }
 
-function pieGradient(segments) {
-  const total = segments.reduce((sum, [, value]) => sum + value, 0);
-  if (!total) return "conic-gradient(#dedede 0 360deg)";
-  let cursor = 0;
-  const stops = segments.map(([, value, color]) => {
-    const start = cursor;
-    cursor += (value / total) * 360;
-    return `${color} ${start}deg ${cursor}deg`;
-  });
-  return `conic-gradient(${stops.join(", ")})`;
+function slugId(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "chart";
 }
 
 function bindChartFilters() {
@@ -590,23 +595,16 @@ function timeSeriesCard(title, subtitle, field, unit, error, fallback) {
 function requestFallbackChart(summary) {
   const requested = Math.max(summary.requested, 0);
   const available = Math.max(summary.capacity - requested, 0);
+  const segments = [
+    ["Requested", requested, "#3d90ce", { kind: "request", value: summary.resource, label: `${summary.label} requested` }],
+    ["Allocatable", available, "#8da0a5", { kind: "allocatable", value: summary.resource, label: `${summary.label} allocatable` }],
+  ];
   return `
     <div class="pie-layout request-layout">
-      <div class="pie" style="background: ${pieGradient([
-        ["Requested", requested, "#3d90ce"],
-        ["Available", available, "#dedede"],
-      ])};" aria-hidden="true"></div>
+      ${pieSvg(segments, requested + available, `${summary.resource}-requests`)}
       <div class="legend">
-        <div class="legend-row">
-          <span class="swatch" style="background:#3d90ce"></span>
-          <span>Requested</span>
-          <strong>${escapeHtml(summary.format(requested))}</strong>
-        </div>
-        <div class="legend-row">
-          <span class="swatch" style="background:#dedede"></span>
-          <span>Allocatable</span>
-          <strong>${escapeHtml(summary.format(summary.capacity))}</strong>
-        </div>
+        ${legendRow("Requested", summary.format(requested), "#3d90ce", segments[0][3])}
+        ${legendRow("Allocatable", summary.format(summary.capacity), "#8da0a5", segments[1][3])}
       </div>
     </div>`;
 }
@@ -630,6 +628,8 @@ function resourceRequestSummary() {
 
   return {
     cpu: {
+      resource: "cpu",
+      label: "CPU",
       requested: requested.cpu,
       capacity: cpuCapacity,
       percent: percentage(requested.cpu, cpuCapacity),
@@ -637,6 +637,8 @@ function resourceRequestSummary() {
       format: formatCpu,
     },
     memory: {
+      resource: "memory",
+      label: "Memory",
       requested: requested.memory,
       capacity: memoryCapacity,
       percent: percentage(requested.memory, memoryCapacity),
@@ -874,7 +876,22 @@ function chartFilterMatches(resource) {
   if (!chartFilterApplies()) return true;
   if (state.chartFilter.kind === "resource") return resource.type === state.chartFilter.value;
   if (state.chartFilter.kind === "podStatus") return resource.type === "pods" && podStatus(resource).tone === state.chartFilter.value;
+  if (state.chartFilter.kind === "request") return resource.type === "pods" && podHasRequest(resource, state.chartFilter.value);
+  if (state.chartFilter.kind === "allocatable") return resource.type === "nodes" && nodeHasAllocatable(resource, state.chartFilter.value);
   return true;
+}
+
+function podHasRequest(resource, field) {
+  const containers = resource.raw.spec?.containers || [];
+  return containers.some((container) => resourceQuantity(container.resources?.requests?.[field], field) > 0);
+}
+
+function nodeHasAllocatable(resource, field) {
+  return resourceQuantity(resource.raw.status?.allocatable?.[field], field) > 0;
+}
+
+function resourceQuantity(value, field) {
+  return field === "memory" ? parseMemoryQuantity(value) : parseCpuQuantity(value);
 }
 
 function renderDetails() {

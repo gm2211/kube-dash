@@ -504,28 +504,58 @@ textarea {
   aspect-ratio: 1;
   border-radius: 50%;
   overflow: visible;
+  background:
+    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.14), transparent 34%),
+    rgba(5, 8, 8, 0.28);
+  box-shadow: inset 0 0 0 14px rgba(255, 255, 255, 0.24), 0 0 22px rgba(90, 199, 223, 0.08);
   filter: drop-shadow(0 0 20px rgba(90, 199, 223, 0.08));
+}
+
+.pie-halo,
+.pie-sheen,
+.pie-rim {
+  pointer-events: none;
+}
+
+.pie-halo {
+  fill: rgba(90, 199, 223, 0.1);
+  filter: drop-shadow(0 0 18px rgba(90, 199, 223, 0.18));
+}
+
+.pie-sheen {
+  mix-blend-mode: screen;
+}
+
+.pie-rim {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1.4;
 }
 
 .pie-segment {
   cursor: pointer;
   transform-origin: 50px 50px;
   transition: opacity 140ms ease, transform 140ms ease, filter 140ms ease;
-  stroke: rgba(5, 8, 8, 0.72);
-  stroke-width: 1.2;
+  fill-opacity: 0.88;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 0.8;
 }
 
 .pie-segment:hover,
 .pie-segment:focus-visible {
   opacity: 1;
+  fill-opacity: 0.98;
   transform: scale(1.035);
   filter: brightness(1.18) drop-shadow(0 0 8px rgba(90, 199, 223, 0.34));
   outline: none;
 }
 
 .pie-segment.active {
+  fill-opacity: 1;
   transform: scale(1.045);
   filter: brightness(1.2) drop-shadow(0 0 10px rgba(90, 199, 223, 0.44));
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 1.1;
 }
 
 .pie-segment.dimmed,
@@ -1600,6 +1630,22 @@ tbody tr.selected {
 
 .pie {
   box-shadow: inset 0 0 0 18px rgba(5, 8, 8, 0.58), 0 0 24px rgba(90, 199, 223, 0.08);
+}
+
+.pie-svg {
+  background:
+    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.14), transparent 34%),
+    rgba(5, 8, 8, 0.32);
+  box-shadow: inset 0 0 0 14px rgba(5, 8, 8, 0.44), 0 0 24px rgba(90, 199, 223, 0.12);
+}
+
+.pie-halo {
+  fill: rgba(90, 199, 223, 0.12);
+  filter: drop-shadow(0 0 18px rgba(90, 199, 223, 0.24));
+}
+
+.pie-rim {
+  stroke: rgba(255, 255, 255, 0.11);
 }
 
 .sparkline {
