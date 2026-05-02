@@ -918,14 +918,20 @@ function resourcePrefix(name) {
   if (parts.length < 2) return String(name || "");
 
   let end = parts.length;
-  if (isGeneratedNamePart(parts[end - 1])) end -= 1;
-  if (end > 1 && isGeneratedNamePart(parts[end - 1])) end -= 1;
+  if (isGeneratedTailPart(parts[end - 1])) end -= 1;
+  if (end > 1 && isReplicaHashPart(parts[end - 1])) end -= 1;
   if (end === parts.length || end < 1) return String(name || "");
   return parts.slice(0, end).join("-");
 }
 
-function isGeneratedNamePart(value) {
-  return /^[a-z0-9]{5,12}$/.test(value || "") && /[0-9]/.test(value || "");
+function isGeneratedTailPart(value) {
+  const text = value || "";
+  return /^[a-z0-9]{5}$/.test(text) || (/^[a-z0-9]{6,12}$/.test(text) && /[0-9]/.test(text));
+}
+
+function isReplicaHashPart(value) {
+  const text = value || "";
+  return /^[a-z0-9]{6,12}$/.test(text) && /[0-9]/.test(text);
 }
 
 function tableColumns(view) {
