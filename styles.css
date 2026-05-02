@@ -411,7 +411,7 @@ textarea {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(120px, 1fr)) 360px;
   gap: 16px;
   margin-top: 18px;
   margin-bottom: 18px;
@@ -1284,6 +1284,10 @@ tbody tr.selected {
     grid-template-columns: 1fr;
   }
 
+  .stats {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
   .charts {
     grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   }
@@ -1975,6 +1979,10 @@ tbody tr.selected {
 .charts,
 .stats {
   gap: 12px;
+}
+
+.stats {
+  grid-template-columns: repeat(4, minmax(120px, 1fr)) 340px;
 }
 
 .charts {
