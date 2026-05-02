@@ -23,8 +23,8 @@
 
 html,
 body {
-  min-height: 100%;
-  overflow-x: hidden;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -65,7 +65,9 @@ button:focus-visible {
 .shell {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -74,6 +76,8 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .brand {
@@ -245,9 +249,10 @@ select:disabled {
 
 .main {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 .topbar {
@@ -336,6 +341,9 @@ select:disabled {
 .import-panel {
   display: grid;
   gap: 14px;
+  flex: 0 0 auto;
+  max-height: min(420px, 42vh);
+  overflow: auto;
   margin-top: 24px;
   margin-bottom: 18px;
   padding: 18px;
@@ -411,6 +419,7 @@ textarea {
 
 .stats {
   display: grid;
+  flex: 0 0 auto;
   grid-template-columns: repeat(4, minmax(120px, 1fr)) 360px;
   gap: 16px;
   margin-top: 18px;
@@ -418,6 +427,7 @@ textarea {
 }
 
 .charts {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
@@ -690,23 +700,37 @@ textarea {
 }
 
 .content-grid {
+  min-height: 0;
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 18px;
-  align-items: start;
+  align-items: stretch;
   margin-bottom: 24px;
 }
 
 .resource-panel,
 .details {
   min-width: 0;
+  min-height: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 2px;
   box-shadow: var(--shadow);
 }
 
+.resource-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.details {
+  overflow: auto;
+}
+
 .panel-heading {
+  flex: 0 0 auto;
   min-height: 56px;
   padding: 0 20px;
   display: flex;
@@ -722,8 +746,9 @@ textarea {
 }
 
 .table-wrap {
+  min-height: 0;
+  flex: 1 1 auto;
   overflow: auto;
-  max-height: calc(100vh - 286px);
 }
 
 table {
@@ -1836,6 +1861,7 @@ tbody tr.selected {
 
 .sidebar-main {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
