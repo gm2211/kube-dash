@@ -2,6 +2,7 @@ const state = {
   view: "overview",
   search: "",
   namespace: "all",
+  sorts: {},
   chartFilter: null,
   context: localStorage.getItem("kd-context") || "",
   contexts: [],
@@ -754,11 +755,13 @@ function renderTable() {
 
   const rows = filteredResources(view === "overview" ? "all" : view);
   const columns = tableColumns(view);
+  const sortedRows = sortRows(rows, columns, view);
   selectors.resultCount.innerHTML = chartFilterApplies()
     ? `${rows.length} shown · ${escapeHtml(state.chartFilter.label)} <button class="clear-filter" type="button">Clear</button>`
     : `${rows.length} shown`;
   selectors.resultCount.querySelector(".clear-filter")?.addEventListener("click", clearChartFilter);
-  selectors.tableHead.innerHTML = `<tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}</tr>`;
+  selectors.tableHead.innerHTML = `<tr>${columns.map((column) => tableHeader(column, view)).join("")}</tr>`;
+  bindSortHeaders(view, columns);
   if (state.loading) {
     selectors.tableBody.innerHTML = `
       <tr>
@@ -785,7 +788,7 @@ function renderTable() {
     return;
   }
 
-  if (!rows.length) {
+  if (!sortedRows.length) {
     selectors.tableBody.innerHTML = `
       <tr>
         <td colspan="${columns.length}">
@@ -798,7 +801,7 @@ function renderTable() {
     return;
   }
 
-  selectors.tableBody.innerHTML = rows
+  selectors.tableBody.innerHTML = sortedRows
     .map(
       (resource) => `
         <tr class="${resource.key === state.selectedKey ? "selected" : ""}" data-key="${escapeHtml(resource.key)}">
@@ -818,22 +821,24 @@ function renderTable() {
 
 function tableColumns(view) {
   const nameColumn = {
+    id: "name",
     label: "Name",
+    sort: (resource) => resource.name,
     render: (resource) => `
       <div class="name-cell">
         <strong>${escapeHtml(resource.name)}</strong>
         <span class="subtle">${escapeHtml(resource.kind)}${resource.namespace ? ` · ${escapeHtml(resource.namespace)}` : ""}</span>
       </div>`,
   };
-  const ageColumn = { label: "Age", render: (resource) => age(resource.created) };
+  const ageColumn = { id: "age", label: "Age", sort: (resource) => ageMs(resource.created), defaultDir: "asc", render: (resource) => age(resource.created) };
 
   if (view === "pods") {
     return [
       nameColumn,
-      { label: "Status", render: (resource) => statusBadge(podStatus(resource)) },
-      { label: "Ready", render: (resource) => podReady(resource) },
-      { label: "Restarts", render: (resource) => podRestarts(resource) },
-      { label: "Node", render: (resource) => escapeHtml(resource.raw.spec?.nodeName || "-") },
+      { id: "status", label: "Status", sort: (resource) => podStatus(resource).label, render: (resource) => statusBadge(podStatus(resource)) },
+      { id: "ready", label: "Ready", sort: (resource) => podReadySort(resource), render: (resource) => podReady(resource) },
+      { id: "restarts", label: "Restarts", sort: (resource) => podRestarts(resource), render: (resource) => podRestarts(resource) },
+      { id: "node", label: "Node", sort: (resource) => resource.raw.spec?.nodeName || "", render: (resource) => escapeHtml(resource.raw.spec?.nodeName || "-") },
       ageColumn,
     ];
   }
@@ -841,9 +846,9 @@ function tableColumns(view) {
   if (view === "deployments") {
     return [
       nameColumn,
-      { label: "Ready", render: (resource) => deploymentReady(resource) },
-      { label: "Replicas", render: (resource) => resource.raw.spec?.replicas ?? 0 },
-      { label: "Updated", render: (resource) => resource.raw.status?.updatedReplicas ?? 0 },
+      { id: "ready", label: "Ready", sort: (resource) => deploymentReadySort(resource), render: (resource) => deploymentReady(resource) },
+      { id: "replicas", label: "Replicas", sort: (resource) => resource.raw.spec?.replicas ?? 0, render: (resource) => resource.raw.spec?.replicas ?? 0 },
+      { id: "updated", label: "Updated", sort: (resource) => resource.raw.status?.updatedReplicas ?? 0, render: (resource) => resource.raw.status?.updatedReplicas ?? 0 },
       ageColumn,
     ];
   }
@@ -851,9 +856,9 @@ function tableColumns(view) {
   if (view === "services") {
     return [
       nameColumn,
-      { label: "Type", render: (resource) => escapeHtml(resource.raw.spec?.type || "-") },
-      { label: "Cluster IP", render: (resource) => escapeHtml(resource.raw.spec?.clusterIP || "-") },
-      { label: "Ports", render: servicePorts },
+      { id: "type", label: "Type", sort: (resource) => resource.raw.spec?.type || "", render: (resource) => escapeHtml(resource.raw.spec?.type || "-") },
+      { id: "cluster-ip", label: "Cluster IP", sort: (resource) => ipSort(resource.raw.spec?.clusterIP), render: (resource) => escapeHtml(resource.raw.spec?.clusterIP || "-") },
+      { id: "ports", label: "Ports", sort: servicePorts, render: servicePorts },
       ageColumn,
     ];
   }
@@ -861,9 +866,9 @@ function tableColumns(view) {
   if (view === "nodes") {
     return [
       nameColumn,
-      { label: "Status", render: (resource) => statusBadge(nodeStatus(resource)) },
-      { label: "Internal IP", render: nodeInternalIp },
-      { label: "Kubelet", render: (resource) => escapeHtml(resource.raw.status?.nodeInfo?.kubeletVersion || "-") },
+      { id: "status", label: "Status", sort: (resource) => nodeStatus(resource).label, render: (resource) => statusBadge(nodeStatus(resource)) },
+      { id: "internal-ip", label: "Internal IP", sort: (resource) => ipSort(nodeInternalIp(resource)), render: nodeInternalIp },
+      { id: "kubelet", label: "Kubelet", sort: (resource) => resource.raw.status?.nodeInfo?.kubeletVersion || "", render: (resource) => escapeHtml(resource.raw.status?.nodeInfo?.kubeletVersion || "-") },
       ageColumn,
     ];
   }
@@ -871,20 +876,112 @@ function tableColumns(view) {
   if (view === "events") {
     return [
       nameColumn,
-      { label: "Type", render: (resource) => statusBadge(eventStatus(resource)) },
-      { label: "Reason", render: (resource) => escapeHtml(resource.raw.reason || "-") },
-      { label: "Object", render: eventObject },
-      { label: "Count", render: (resource) => resource.raw.count ?? 1 },
-      { label: "Last Seen", render: (resource) => age(resource.raw.lastTimestamp || resource.raw.eventTime || resource.created) },
+      { id: "type", label: "Type", sort: (resource) => eventStatus(resource).label, render: (resource) => statusBadge(eventStatus(resource)) },
+      { id: "reason", label: "Reason", sort: (resource) => resource.raw.reason || "", render: (resource) => escapeHtml(resource.raw.reason || "-") },
+      { id: "object", label: "Object", sort: eventObject, render: eventObject },
+      { id: "count", label: "Count", sort: (resource) => resource.raw.count ?? 1, defaultDir: "desc", render: (resource) => resource.raw.count ?? 1 },
+      { id: "last-seen", label: "Last Seen", sort: (resource) => ageMs(resource.raw.lastTimestamp || resource.raw.eventTime || resource.created), defaultDir: "asc", render: (resource) => age(resource.raw.lastTimestamp || resource.raw.eventTime || resource.created) },
     ];
   }
 
   return [
     nameColumn,
-    { label: "Status", render: overviewStatus },
-    { label: "Namespace", render: (resource) => escapeHtml(resource.namespace || "-") },
+    { id: "status", label: "Status", sort: (resource) => overviewSort(resource), render: overviewStatus },
+    { id: "namespace", label: "Namespace", sort: (resource) => resource.namespace || "", render: (resource) => escapeHtml(resource.namespace || "-") },
     ageColumn,
   ];
+}
+
+function tableHeader(column, view) {
+  if (!column.sort) return `<th>${escapeHtml(column.label)}</th>`;
+  const sort = state.sorts[view];
+  const active = sort?.id === column.id;
+  const dir = active ? sort.dir : "";
+  const ariaSort = active ? (dir === "asc" ? "ascending" : "descending") : "none";
+  const indicator = active ? (dir === "asc" ? "▲" : "▼") : "";
+  return `
+    <th aria-sort="${ariaSort}">
+      <button class="sort-button${active ? " active" : ""}" type="button" data-sort="${escapeHtml(column.id)}">
+        <span>${escapeHtml(column.label)}</span>
+        <span class="sort-indicator" aria-hidden="true">${indicator}</span>
+      </button>
+    </th>`;
+}
+
+function bindSortHeaders(view, columns) {
+  selectors.tableHead.querySelectorAll("[data-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const column = columns.find((item) => item.id === button.dataset.sort);
+      if (!column) return;
+      const current = state.sorts[view];
+      const dir = current?.id === column.id ? (current.dir === "asc" ? "desc" : "asc") : column.defaultDir || "asc";
+      state.sorts[view] = { id: column.id, dir };
+      renderTable();
+    });
+  });
+}
+
+function sortRows(rows, columns, view) {
+  const sort = state.sorts[view];
+  if (!sort) return rows;
+  const column = columns.find((item) => item.id === sort.id && item.sort);
+  if (!column) return rows;
+  const direction = sort.dir === "desc" ? -1 : 1;
+  return [...rows].sort((left, right) => {
+    const primary = compareSortValues(column.sort(left), column.sort(right));
+    if (primary) return primary * direction;
+    return compareSortValues(left.name, right.name);
+  });
+}
+
+function compareSortValues(left, right) {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    const leftItems = Array.isArray(left) ? left : [left];
+    const rightItems = Array.isArray(right) ? right : [right];
+    const length = Math.max(leftItems.length, rightItems.length);
+    for (let index = 0; index < length; index += 1) {
+      const result = compareSortValues(leftItems[index], rightItems[index]);
+      if (result) return result;
+    }
+    return 0;
+  }
+
+  const leftNumber = typeof left === "number" ? left : Number.NaN;
+  const rightNumber = typeof right === "number" ? right : Number.NaN;
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+  return String(left ?? "").localeCompare(String(right ?? ""), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function podReadySort(resource) {
+  const statuses = resource.raw.status?.containerStatuses || [];
+  const ready = statuses.filter((status) => status.ready).length;
+  return [statuses.length ? ready / statuses.length : 0, ready, statuses.length];
+}
+
+function deploymentReadySort(resource) {
+  const ready = resource.raw.status?.readyReplicas || 0;
+  const desired = resource.raw.spec?.replicas || 0;
+  return [desired ? ready / desired : 0, ready, desired];
+}
+
+function overviewSort(resource) {
+  if (resource.type === "pods") return podStatus(resource).label;
+  if (resource.type === "nodes") return nodeStatus(resource).label;
+  if (resource.type === "events") return eventStatus(resource).label;
+  if (resource.type === "deployments") return deploymentReady(resource);
+  return "Active";
+}
+
+function ageMs(timestamp) {
+  if (!timestamp) return Number.POSITIVE_INFINITY;
+  const value = Date.now() - new Date(timestamp).getTime();
+  return Number.isFinite(value) ? Math.max(0, value) : Number.POSITIVE_INFINITY;
+}
+
+function ipSort(value) {
+  const text = String(value || "");
+  const parts = text.split(".").map((part) => Number.parseInt(part, 10));
+  return parts.length === 4 && parts.every((part) => Number.isFinite(part)) ? parts : text;
 }
 
 function filteredResources(kind) {

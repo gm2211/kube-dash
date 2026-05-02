@@ -777,6 +777,35 @@ th {
   z-index: 1;
 }
 
+.sort-button {
+  min-height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+
+.sort-button:hover,
+.sort-button:focus-visible,
+.sort-button.active {
+  background: transparent;
+  color: var(--heading);
+}
+
+.sort-indicator {
+  display: inline-block;
+  width: 0.85em;
+  color: var(--accent);
+  font-size: 0.74em;
+  line-height: 1;
+}
+
 tbody tr {
   cursor: pointer;
 }
