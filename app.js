@@ -310,6 +310,12 @@ function renderContexts() {
 function renderContextRail() {
   if (!selectors.contextRail) return;
   const contexts = state.contexts.length ? state.contexts : state.context ? [state.context] : [];
+  const showRail = contexts.length > 1;
+  selectors.contextRail.closest(".sidebar")?.classList.toggle("rail-collapsed", !showRail);
+  if (!showRail) {
+    selectors.contextRail.innerHTML = "";
+    return;
+  }
   selectors.contextRail.innerHTML = contexts.length
     ? contexts
         .map((context, index) => {
