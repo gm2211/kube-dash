@@ -1031,6 +1031,7 @@ function actionsFor(resource) {
       label: "Delete",
       help: "Deletes this resource. Review the name and namespace before running.",
       command: () => scoped("delete"),
+      confirm: deleteConfirmation,
     },
   ];
 
@@ -1138,6 +1139,9 @@ function showCommand(title, help, command) {
 
 function runResourceAction(action, resource) {
   const command = action.command(resource);
+  if (action.confirm && !action.confirm(resource, command)) {
+    return;
+  }
   if (!state.apiAvailable) {
     showCommand(action.label, "Run kd to execute this action in the browser.", command);
     return;
@@ -1147,6 +1151,20 @@ function runResourceAction(action, resource) {
     return;
   }
   runCommand(action.label, command, Boolean(action.stream), { showCommand: false, formatter: action.formatter });
+}
+
+function deleteConfirmation(resource) {
+  const namespace = resource.namespace || "cluster";
+  const context = state.context || "current context";
+  const message = [
+    `Delete ${resource.kind} "${resource.name}"?`,
+    "",
+    `Namespace: ${namespace}`,
+    `Context: ${context}`,
+    "",
+    "This action runs kubectl delete and can remove live cluster resources.",
+  ].join("\n");
+  return window.confirm(message);
 }
 
 async function runCommand(title, command, stream = false, options = {}) {
