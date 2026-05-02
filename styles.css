@@ -1110,24 +1110,42 @@ tbody tr.selected {
 }
 
 .delete-dialog {
-  width: min(620px, calc(100vw - 32px));
+  width: min(520px, calc(100vw - 40px));
+  min-height: 0;
+  height: fit-content;
+  block-size: fit-content;
+  max-height: calc(100vh - 48px);
+  max-block-size: calc(100vh - 48px);
   border: 1px solid var(--border);
   border-radius: 2px;
-  padding: 18px;
+  padding: 16px;
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 
 .delete-dialog[open] {
-  display: grid;
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.delete-dialog .dialog-head {
+  align-items: flex-start;
+}
+
+.delete-dialog .icon-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
 }
 
 .delete-summary {
   display: grid;
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 2px;
   background: var(--surface-raised);
@@ -1135,7 +1153,7 @@ tbody tr.selected {
 
 .delete-summary div {
   display: grid;
-  grid-template-columns: 94px minmax(0, 1fr);
+  grid-template-columns: 86px minmax(0, 1fr);
   gap: 10px;
   align-items: baseline;
 }
@@ -1161,13 +1179,23 @@ tbody tr.selected {
 
 .delete-confirm-input {
   width: 100%;
-  min-height: 42px;
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface-raised);
   color: var(--text);
   outline: 2px solid transparent;
+}
+
+.delete-actions {
+  margin-top: 2px;
+}
+
+.delete-actions button {
+  min-height: 34px;
 }
 
 .delete-confirm-input:focus {
