@@ -8,7 +8,39 @@ A local, client-side Kubernetes dashboard powered by your local `kubectl`. It se
 
 ![kube-dash resource details](docs/screenshots/resource-details.png)
 
-## Use it
+## Quick Install
+
+Install or update `kd` with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/gm2211/kube-dash/main/install.sh | bash
+```
+
+Then run:
+
+```sh
+kd
+```
+
+The installer clones kube-dash into `~/.kube-dash` and links `kd` into `~/.local/bin`.
+If your shell cannot find `kd`, add `~/.local/bin` to your `PATH`.
+
+## Quick Update
+
+Update to the latest `main`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/gm2211/kube-dash/main/install.sh | bash -s -- --update
+```
+
+If you cloned the repo manually, you can also update with:
+
+```sh
+cd ~/.kube-dash
+git pull --ff-only
+```
+
+## Use It
 
 Run:
 
