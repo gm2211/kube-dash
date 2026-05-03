@@ -20,6 +20,27 @@ CONFIG_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("
 PREFERENCES_PATH = os.path.join(CONFIG_DIR, "preferences.json")
 DEFAULT_PREFERENCES = {"groupByPrefix": True}
 RESOURCE_CHUNK_SIZE = 20
+DEDICATED_RESOURCE_FALLBACKS = [
+    {"name": "namespaces", "kind": "Namespace", "namespaced": False},
+    {"name": "nodes", "kind": "Node", "namespaced": False},
+    {"name": "persistentvolumes", "kind": "PersistentVolume", "namespaced": False},
+    {"name": "clusterroles", "kind": "ClusterRole", "namespaced": False},
+    {"name": "storageclasses", "kind": "StorageClass", "namespaced": False},
+    {"name": "cronjobs", "kind": "CronJob", "namespaced": True},
+    {"name": "daemonsets", "kind": "DaemonSet", "namespaced": True},
+    {"name": "deployments", "kind": "Deployment", "namespaced": True},
+    {"name": "jobs", "kind": "Job", "namespaced": True},
+    {"name": "pods", "kind": "Pod", "namespaced": True},
+    {"name": "replicasets", "kind": "ReplicaSet", "namespaced": True},
+    {"name": "statefulsets", "kind": "StatefulSet", "namespaced": True},
+    {"name": "configmaps", "kind": "ConfigMap", "namespaced": True},
+    {"name": "secrets", "kind": "Secret", "namespaced": True},
+    {"name": "ingress", "kind": "Ingress", "namespaced": True},
+    {"name": "services", "kind": "Service", "namespaced": True},
+    {"name": "endpointslices", "kind": "EndpointSlice", "namespaced": True},
+    {"name": "events", "kind": "Event", "namespaced": True},
+    {"name": "roles", "kind": "Role", "namespaced": True},
+]
 
 
 def kubectl(args, timeout=45):
@@ -168,6 +189,25 @@ def get_api_resource_items(context, resource_infos, namespaced):
     return items, errors
 
 
+def get_missing_dedicated_resources(context, existing_items):
+    existing_kinds = {item.get("kind") for item in existing_items if isinstance(item, dict)}
+    resource_infos = [
+        {
+            "name": resource["name"],
+            "apiVersion": "",
+            "kind": resource["kind"],
+            "namespaced": resource["namespaced"],
+        }
+        for resource in DEDICATED_RESOURCE_FALLBACKS
+        if resource["kind"] not in existing_kinds
+    ]
+    namespaced = [resource for resource in resource_infos if resource["namespaced"]]
+    cluster = [resource for resource in resource_infos if not resource["namespaced"]]
+    namespaced_items, namespaced_errors = get_api_resource_items(context, namespaced, True)
+    cluster_items, cluster_errors = get_api_resource_items(context, cluster, False)
+    return namespaced_items + cluster_items, namespaced_errors + cluster_errors
+
+
 def load_cluster_resources(context):
     namespaced = list_api_resources(context, True)
     cluster = list_api_resources(context, False)
@@ -180,6 +220,9 @@ def load_cluster_resources(context):
     items.extend(cluster_items)
     errors.extend(namespaced_errors)
     errors.extend(cluster_errors)
+    fallback_items, fallback_errors = get_missing_dedicated_resources(context, items)
+    items.extend(fallback_items)
+    errors.extend(fallback_errors)
 
     unique = {}
     for item in items:
