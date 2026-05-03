@@ -19,7 +19,6 @@ resolve_dir() {
 
 APP_DIR="$(resolve_dir)"
 PORT="${KD_PORT:-8765}"
-SNAPSHOT="${KD_SNAPSHOT:-$APP_DIR/snapshot.json}"
 
 usage() {
   cat <<'USAGE'
@@ -29,16 +28,11 @@ Commands:
   update         Update kube-dash to the latest main branch.
 
 Options:
-  --serve         Start the local kubectl dashboard. This is the default.
   --port <port>   Use a different port.
-  --collect       Write snapshot.json with current kubectl resources.
-  --refresh       Collect resources, then open the static dashboard.
-  --file          Open index.html directly without the kubectl bridge.
   --help          Show this help.
 
 Environment:
-  KD_PORT         Default port for --serve.
-  KD_SNAPSHOT     Output path for --collect and --refresh.
+  KD_PORT         Default port.
 USAGE
 }
 
@@ -67,16 +61,6 @@ wait_for_server() {
   return 0
 }
 
-collect() {
-  if ! command -v kubectl >/dev/null 2>&1; then
-    printf 'kd: kubectl was not found in PATH.\n' >&2
-    exit 1
-  fi
-
-  kubectl get pods,deployments,services,nodes,events -A -o json > "$SNAPSHOT"
-  printf 'Wrote %s\n' "$SNAPSHOT"
-}
-
 serve() {
   cd "$APP_DIR"
   local url="http://127.0.0.1:$PORT/index.html"
@@ -86,7 +70,7 @@ serve() {
   elif command -v python >/dev/null 2>&1; then
     python "$APP_DIR/kd-server.py" --port "$PORT" &
   else
-    printf 'kd: python is required for --serve. Try: kd --file\n' >&2
+    printf 'kd: python is required.\n' >&2
     exit 1
   fi
 
@@ -123,18 +107,6 @@ while [ "$#" -gt 0 ]; do
       mode="update"
       shift
       ;;
-    --collect)
-      mode="collect"
-      shift
-      ;;
-    --refresh)
-      mode="refresh"
-      shift
-      ;;
-    --serve)
-      mode="serve"
-      shift
-      ;;
     --port)
       PORT="${2:-}"
       if [ -z "$PORT" ]; then
@@ -142,10 +114,6 @@ while [ "$#" -gt 0 ]; do
         exit 1
       fi
       shift 2
-      ;;
-    --file)
-      mode="file"
-      shift
       ;;
     --help|-h)
       usage
@@ -160,18 +128,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$mode" in
-  collect)
-    collect
-    ;;
-  refresh)
-    collect
-    open_url "$APP_DIR/index.html"
-    ;;
   serve)
     serve
-    ;;
-  file)
-    open_url "$APP_DIR/index.html"
     ;;
   update)
     update_kd
