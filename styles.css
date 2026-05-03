@@ -851,8 +851,7 @@ tbody tr.selected {
 }
 
 .group-row td {
-  padding-top: 9px;
-  padding-bottom: 9px;
+  padding: 0;
   background: rgba(61, 144, 206, 0.06);
   color: var(--muted);
   font-size: 0.74rem;
@@ -861,20 +860,51 @@ tbody tr.selected {
   text-transform: uppercase;
 }
 
-.group-row span,
-.group-row strong,
-.group-row em {
-  display: inline-block;
-  margin-right: 10px;
-  font-style: normal;
+.group-toggle {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
 }
 
-.group-row span {
+.group-toggle:hover,
+.group-toggle:focus-visible {
+  background: rgba(61, 144, 206, 0.08);
   color: var(--heading);
 }
 
-.group-row strong {
+.group-caret {
+  width: 1em;
   color: var(--accent);
+}
+
+.group-toggle span,
+.group-toggle strong,
+.group-toggle em {
+  display: inline-block;
+  font-style: normal;
+}
+
+.group-toggle span:not(.group-caret) {
+  color: var(--heading);
+}
+
+.group-toggle strong {
+  color: var(--accent);
+}
+
+.group-toggle em {
+  color: var(--muted);
 }
 
 tbody tr.grouped .name-cell {

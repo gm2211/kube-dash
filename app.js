@@ -4,6 +4,7 @@ const state = {
   namespace: "all",
   sorts: {},
   groupByPrefix: localStorage.getItem("kd-group-by-prefix") !== "false",
+  collapsedGroups: new Set(readStoredJson("kd-collapsed-prefix-groups", [])),
   chartFilter: null,
   context: localStorage.getItem("kd-context") || "",
   contexts: [],
@@ -94,6 +95,15 @@ const selectors = {
   logsStatus: document.querySelector("#logsStatus"),
   logsOutput: document.querySelector("#logsOutput"),
 };
+
+function readStoredJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "null");
+    return value ?? fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
 
 function init() {
   bindEvents();
@@ -850,6 +860,19 @@ function renderTable() {
       renderDetails();
     });
   });
+
+  selectors.tableBody.querySelectorAll("[data-group-key]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.groupKey;
+      if (state.collapsedGroups.has(key)) {
+        state.collapsedGroups.delete(key);
+      } else {
+        state.collapsedGroups.add(key);
+      }
+      persistCollapsedGroups();
+      renderTable();
+    });
+  });
 }
 
 function tableRows(rows, columns) {
@@ -859,15 +882,16 @@ function tableRows(rows, columns) {
   const renderedGroups = new Set();
   const output = [];
   rows.forEach((resource) => {
-    const group = groups.get(groupKey(resource));
+    const group = groups.get(resource.key);
     if (!group || group.items.length < 2) {
       output.push(resourceRow(resource, columns));
       return;
     }
     if (renderedGroups.has(group.key)) return;
     renderedGroups.add(group.key);
-    output.push(groupRow(group, columns.length));
-    group.items.forEach((item) => output.push(resourceRow(item, columns, " grouped")));
+    const collapsed = state.collapsedGroups.has(group.key);
+    output.push(groupRow(group, columns.length, collapsed));
+    if (!collapsed) group.items.forEach((item) => output.push(resourceRow(item, columns, " grouped")));
   });
   return output;
 }
@@ -879,59 +903,114 @@ function resourceRow(resource, columns, extraClass = "") {
     </tr>`;
 }
 
-function groupRow(group, columnCount) {
+function groupRow(group, columnCount, collapsed) {
   const namespace = group.namespace ? ` · ${group.namespace}` : "";
+  const action = collapsed ? "Expand" : "Collapse";
   return `
     <tr class="group-row">
       <td colspan="${columnCount}">
-        <span>${escapeHtml(group.prefix)}</span>
-        <strong>${group.items.length}</strong>
-        <em>${escapeHtml(`${group.kind}${namespace}`)}</em>
+        <button class="group-toggle" type="button" data-group-key="${escapeHtml(group.key)}" aria-expanded="${String(!collapsed)}" title="${action} ${escapeHtml(group.prefix)}">
+          <span class="group-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+          <span>${escapeHtml(group.prefix)}</span>
+          <strong>${group.items.length}</strong>
+          <em>${escapeHtml(`${group.kind}${namespace}`)}</em>
+        </button>
       </td>
     </tr>`;
 }
 
 function buildPrefixGroups(rows) {
-  const groups = new Map();
+  const scopes = new Map();
   rows.forEach((resource) => {
-    const prefix = resourcePrefix(resource.name);
-    const key = groupKey(resource, prefix);
-    const group = groups.get(key) || {
-      key,
-      prefix,
-      kind: resource.kind,
-      namespace: resource.namespace,
-      items: [],
-    };
-    group.items.push(resource);
-    groups.set(key, group);
+    const scope = groupScope(resource);
+    const items = scopes.get(scope) || [];
+    items.push({
+      resource,
+      basePrefix: resourcePrefix(resource.name),
+    });
+    scopes.set(scope, items);
   });
-  return groups;
+
+  const groupsByResource = new Map();
+  scopes.forEach((items, scope) => {
+    const counts = new Map();
+    items.forEach((item) => {
+      groupCandidates(item.basePrefix).forEach((prefix) => {
+        counts.set(prefix, (counts.get(prefix) || 0) + 1);
+      });
+    });
+
+    const candidates = [...counts.entries()]
+      .filter(([, count]) => count > 1)
+      .sort(([left], [right]) => groupWeight(right) - groupWeight(left) || right.length - left.length || left.localeCompare(right));
+    const assigned = new Set();
+
+    candidates.forEach(([prefix]) => {
+      const members = items.filter((item) => !assigned.has(item.resource.key) && groupCandidates(item.basePrefix).includes(prefix));
+      if (members.length < 2) return;
+      const resources = members.map((item) => item.resource);
+      const group = {
+        key: `${scope}:${prefix}`,
+        prefix,
+        kind: groupKind(resources),
+        namespace: resources[0]?.namespace || "",
+        items: resources,
+      };
+      resources.forEach((resource) => {
+        assigned.add(resource.key);
+        groupsByResource.set(resource.key, group);
+      });
+    });
+  });
+  return groupsByResource;
 }
 
-function groupKey(resource, prefix = resourcePrefix(resource.name)) {
-  return `${resource.type}:${resource.namespace || "cluster"}:${prefix}`;
+function groupScope(resource) {
+  return `${resource.type}:${resource.namespace || "cluster"}`;
 }
 
 function resourcePrefix(name) {
-  const parts = String(name || "").split("-").filter(Boolean);
+  const eventName = String(name || "").split(".")[0];
+  const parts = eventName.split("-").filter(Boolean);
   if (parts.length < 2) return String(name || "");
 
   let end = parts.length;
-  if (isGeneratedTailPart(parts[end - 1])) end -= 1;
-  if (end > 1 && isReplicaHashPart(parts[end - 1])) end -= 1;
+  let stripped = 0;
+  while (end > 1 && stripped < 3 && isGeneratedTailPart(parts[end - 1])) {
+    end -= 1;
+    stripped += 1;
+  }
   if (end === parts.length || end < 1) return String(name || "");
   return parts.slice(0, end).join("-");
 }
 
 function isGeneratedTailPart(value) {
   const text = value || "";
-  return /^[a-z0-9]{5}$/.test(text) || (/^[a-z0-9]{6,12}$/.test(text) && /[0-9]/.test(text));
+  return /^[a-z0-9]{5}$/.test(text) || /^[0-9]{5,}$/.test(text) || (/^[a-z0-9]{6,12}$/.test(text) && /[0-9]/.test(text));
 }
 
-function isReplicaHashPart(value) {
-  const text = value || "";
-  return /^[a-z0-9]{6,12}$/.test(text) && /[0-9]/.test(text);
+function groupCandidates(prefix) {
+  const text = String(prefix || "");
+  const parts = text.split("-").filter(Boolean);
+  const candidates = new Set([text]);
+  for (let index = 1; index < parts.length; index += 1) {
+    const candidate = parts.slice(0, index).join("-");
+    if (candidate.length >= 3) candidates.add(candidate);
+  }
+  return [...candidates].filter(Boolean);
+}
+
+function groupWeight(prefix) {
+  return String(prefix || "").split("-").filter(Boolean).length * 100 + String(prefix || "").length;
+}
+
+function groupKind(resources) {
+  const kinds = [...new Set(resources.map((resource) => resource.kind))];
+  return kinds.length === 1 ? kinds[0] : "Resources";
+}
+
+function persistCollapsedGroups() {
+  localStorage.setItem("kd-collapsed-prefix-groups", JSON.stringify([...state.collapsedGroups]));
 }
 
 function tableColumns(view) {
@@ -1101,13 +1180,133 @@ function ipSort(value) {
 
 function filteredResources(kind) {
   const resources = kind === "all" ? allResources() : state.resources[kind] || [];
+  const query = parseSearchQuery(state.search);
   return resources.filter((resource) => {
     const inNamespace = state.namespace === "all" || !resource.namespace || resource.namespace === state.namespace;
-    const text = `${resource.kind} ${resource.name} ${resource.namespace} ${Object.entries(resource.labels)
-      .map(([key, value]) => `${key}=${value}`)
-      .join(" ")}`.toLowerCase();
-    return inNamespace && chartFilterMatches(resource) && (!state.search || text.includes(state.search));
+    return inNamespace && chartFilterMatches(resource) && searchMatches(resource, query);
   });
+}
+
+function parseSearchQuery(query) {
+  const tokens = String(query || "").match(/"[^"]+"|\S+/g) || [];
+  const filters = [];
+  const terms = [];
+  tokens.forEach((token) => {
+    const text = token.replace(/^"|"$/g, "");
+    const match = text.match(/^([a-z0-9_.\-/]+)(!?=|:|>=|<=|>|<)(.+)$/i);
+    if (!match) {
+      terms.push(text.toLowerCase());
+      return;
+    }
+    filters.push({ field: match[1].toLowerCase(), op: match[2], value: match[3].replace(/^"|"$/g, "").toLowerCase() });
+  });
+  return { terms, filters };
+}
+
+function searchMatches(resource, query) {
+  if (!query.terms.length && !query.filters.length) return true;
+  const text = resourceSearchText(resource);
+  return query.terms.every((term) => text.includes(term)) && query.filters.every((filter) => resourceFilterMatches(resource, filter));
+}
+
+function resourceSearchText(resource) {
+  return [
+    resource.kind,
+    resource.type,
+    resource.name,
+    resource.namespace,
+    resourceStatusLabel(resource),
+    resource.raw.spec?.nodeName,
+    nodeInternalIp(resource),
+    resource.raw.spec?.clusterIP,
+    servicePorts(resource),
+    age(resource.created),
+    ...Object.entries(resource.labels).map(([key, value]) => `${key}=${value}`),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function resourceFilterMatches(resource, filter) {
+  if (filter.field === "age") return compareAgeFilter(resource, filter);
+
+  const value = resourceFilterValue(resource, filter.field);
+  if (value === undefined) return labelFilterMatches(resource, filter);
+  return compareTextFilter(String(value).toLowerCase(), filter);
+}
+
+function resourceFilterValue(resource, field) {
+  const fields = {
+    name: resource.name,
+    kind: resource.kind,
+    type: [resource.type.replace(/s$/, ""), resource.raw.spec?.type, resource.raw.type].filter(Boolean).join(" "),
+    resource: resource.type.replace(/s$/, ""),
+    namespace: resource.namespace || "cluster",
+    ns: resource.namespace || "cluster",
+    status: resourceStatusLabel(resource),
+    node: resource.raw.spec?.nodeName || nodeInternalIp(resource),
+    ready: resource.type === "pods" ? podReady(resource) : resource.type === "deployments" ? deploymentReady(resource) : "",
+    restarts: resource.type === "pods" ? podRestarts(resource) : "",
+    port: resource.type === "services" ? servicePorts(resource) : "",
+    ports: resource.type === "services" ? servicePorts(resource) : "",
+    reason: resource.type === "events" ? resource.raw.reason || "" : "",
+  };
+  return fields[field];
+}
+
+function labelFilterMatches(resource, filter) {
+  const labels = Object.fromEntries(Object.entries(resource.labels).map(([key, value]) => [key.toLowerCase(), String(value).toLowerCase()]));
+  const labelField = filter.field.startsWith("label.") ? filter.field.slice(6) : filter.field.startsWith("label/") ? filter.field.slice(6) : filter.field;
+  if (filter.field === "label" || filter.field === "labels") {
+    return Object.entries(labels).some(([key, value]) => compareTextFilter(`${key}=${value}`, filter) || compareTextFilter(value, filter));
+  }
+  if (!(labelField in labels)) return false;
+  return compareTextFilter(labels[labelField], filter);
+}
+
+function compareTextFilter(actual, filter) {
+  const value = filter.value;
+  if (filter.op === "!=") return !actual.includes(value);
+  if (filter.op === ":" || filter.op === "=") return actual.includes(value);
+  const left = Number.parseFloat(actual);
+  const right = Number.parseFloat(value);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  if (filter.op === ">") return left > right;
+  if (filter.op === "<") return left < right;
+  if (filter.op === ">=") return left >= right;
+  if (filter.op === "<=") return left <= right;
+  return false;
+}
+
+function compareAgeFilter(resource, filter) {
+  const expected = durationMs(filter.value);
+  if (!Number.isFinite(expected)) return false;
+  const actual = ageMs(resource.created);
+  if (filter.op === "!=") return actual !== expected;
+  if (filter.op === ":" || filter.op === "=") return actual >= expected * 0.8 && actual <= expected * 1.2;
+  if (filter.op === ">") return actual > expected;
+  if (filter.op === "<") return actual < expected;
+  if (filter.op === ">=") return actual >= expected;
+  if (filter.op === "<=") return actual <= expected;
+  return false;
+}
+
+function durationMs(value) {
+  const match = String(value || "").match(/^(\d+(?:\.\d+)?)(ms|s|m|h|d|w)?$/);
+  if (!match) return Number.NaN;
+  const amount = Number.parseFloat(match[1]);
+  const unit = match[2] || "ms";
+  const multipliers = { ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
+  return amount * multipliers[unit];
+}
+
+function resourceStatusLabel(resource) {
+  if (resource.type === "pods") return podStatus(resource).label;
+  if (resource.type === "nodes") return nodeStatus(resource).label;
+  if (resource.type === "events") return eventStatus(resource).label;
+  if (resource.type === "deployments") return deploymentReady(resource);
+  return "active";
 }
 
 function chartFilterApplies() {

@@ -50,7 +50,9 @@ kd
 
 The dashboard opens at `http://localhost:8765`, discovers your kube contexts, and loads resources from the selected context automatically.
 
-Generated Kubernetes names are grouped by shared prefix by default, so related pods such as replica siblings stay together in the table. The toolbar toggle persists through the local `kd` helper in `~/.config/kube-dash/preferences.json`, with browser local storage as the fallback when opening the static HTML directly.
+Generated Kubernetes names and natural name families are grouped by shared prefix by default, so related pods, services, and events stay together in the table. Group rows can be collapsed or expanded, and the toolbar toggle persists through the local `kd` helper in `~/.config/kube-dash/preferences.json`, with browser local storage as the fallback when opening the static HTML directly.
+
+The filter box supports plain text plus property filters, including examples like `status:running`, `namespace:kube-system`, `type:service`, `node:default-3nr200`, `age>2d`, `restarts>0`, and label filters such as `app=web` or `label:app=web`.
 
 Other launcher commands:
 
