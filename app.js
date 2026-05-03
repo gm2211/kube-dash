@@ -853,7 +853,7 @@ function renderTable() {
     return;
   }
 
-  selectors.tableBody.innerHTML = tableRows(sortedRows, columns).join("");
+  selectors.tableBody.innerHTML = tableRows(sortedRows, columns, view).join("");
 
   selectors.tableBody.querySelectorAll("tr[data-key]").forEach((row) => {
     row.addEventListener("click", () => {
@@ -877,10 +877,10 @@ function renderTable() {
   });
 }
 
-function tableRows(rows, columns) {
+function tableRows(rows, columns, view) {
   if (!state.groupByPrefix) return rows.map((resource) => resourceRow(resource, columns));
 
-  const groups = buildPrefixGroups(rows);
+  const groups = buildPrefixGroups(rows, view);
   const renderedGroups = new Set();
   const output = [];
   rows.forEach((resource) => {
@@ -921,10 +921,10 @@ function groupRow(group, columnCount, collapsed) {
     </tr>`;
 }
 
-function buildPrefixGroups(rows) {
+function buildPrefixGroups(rows, view) {
   const scopes = new Map();
   rows.forEach((resource) => {
-    const scope = groupScope(resource);
+    const scope = groupScope(resource, view);
     const items = scopes.get(scope) || [];
     items.push({
       resource,
@@ -967,7 +967,8 @@ function buildPrefixGroups(rows) {
   return groupsByResource;
 }
 
-function groupScope(resource) {
+function groupScope(resource, view) {
+  if (view === "overview") return `overview:${resource.namespace || "cluster"}`;
   return `${resource.type}:${resource.namespace || "cluster"}`;
 }
 
@@ -1090,7 +1091,7 @@ function tableColumns(view) {
 
 function tableHeader(column, view) {
   if (!column.sort) return `<th>${escapeHtml(column.label)}</th>`;
-  const sort = state.sorts[view];
+  const sort = effectiveSort(view);
   const active = sort?.id === column.id;
   const dir = active ? sort.dir : "";
   const ariaSort = active ? (dir === "asc" ? "ascending" : "descending") : "none";
@@ -1109,7 +1110,7 @@ function bindSortHeaders(view, columns) {
     button.addEventListener("click", () => {
       const column = columns.find((item) => item.id === button.dataset.sort);
       if (!column) return;
-      const current = state.sorts[view];
+      const current = effectiveSort(view);
       const dir = current?.id === column.id ? (current.dir === "asc" ? "desc" : "asc") : column.defaultDir || "asc";
       state.sorts[view] = { id: column.id, dir };
       renderTable();
@@ -1118,7 +1119,7 @@ function bindSortHeaders(view, columns) {
 }
 
 function sortRows(rows, columns, view) {
-  const sort = state.sorts[view];
+  const sort = effectiveSort(view);
   if (!sort) return rows;
   const column = columns.find((item) => item.id === sort.id && item.sort);
   if (!column) return rows;
@@ -1128,6 +1129,10 @@ function sortRows(rows, columns, view) {
     if (primary) return primary * direction;
     return compareSortValues(left.name, right.name);
   });
+}
+
+function effectiveSort(view) {
+  return state.sorts[view] || { id: "name", dir: "asc" };
 }
 
 function compareSortValues(left, right) {
