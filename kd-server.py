@@ -15,11 +15,11 @@ from urllib.parse import parse_qs, urlparse
 
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-RESOURCE_TYPES = "pods,deployments,services,nodes,events"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 CONFIG_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "kube-dash")
 PREFERENCES_PATH = os.path.join(CONFIG_DIR, "preferences.json")
 DEFAULT_PREFERENCES = {"groupByPrefix": True}
+RESOURCE_CHUNK_SIZE = 20
 
 
 def kubectl(args, timeout=45):
@@ -54,6 +54,166 @@ def list_contexts():
         return [line.strip() for line in output.splitlines() if line.strip()]
     except Exception:
         return []
+
+
+def list_api_resources(context, namespaced):
+    try:
+        output = kubectl(
+            [
+                *context_args(context),
+                "api-resources",
+                "--verbs=list",
+                f"--namespaced={'true' if namespaced else 'false'}",
+                "-o",
+                "wide",
+            ],
+            timeout=20,
+        )
+    except Exception:
+        return []
+    resources = []
+    seen = set()
+    for line in output.splitlines():
+        parts = line.split()
+        if not parts or parts[0] == "NAME":
+            continue
+        namespaced_index = next((index for index, part in enumerate(parts) if part in {"true", "false"}), -1)
+        if namespaced_index < 0:
+            continue
+        name = parts[0]
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        resources.append(
+            {
+                "name": name,
+                "apiVersion": parts[namespaced_index - 1] if namespaced_index > 0 else "",
+                "kind": parts[namespaced_index + 1] if namespaced_index >= 0 and namespaced_index + 1 < len(parts) else "",
+                "namespaced": namespaced,
+            }
+        )
+    return resources
+
+
+def chunks(items, size):
+    for index in range(0, len(items), size):
+        yield items[index : index + size]
+
+
+def payload_items(payload):
+    if isinstance(payload, dict) and isinstance(payload.get("items"), list):
+        return payload["items"]
+    if isinstance(payload, dict):
+        return [payload]
+    return []
+
+
+def annotate_resource(item, resource_info, namespaced):
+    if isinstance(item, dict):
+        item["_kdResource"] = {
+            "name": resource_info.get("name", ""),
+            "apiVersion": resource_info.get("apiVersion", ""),
+            "kind": resource_info.get("kind", ""),
+            "namespaced": namespaced,
+        }
+    return item
+
+
+def get_resource_group(context, resource_infos, namespaced):
+    args = [*context_args(context), "get", ",".join(resource_info["name"] for resource_info in resource_infos)]
+    if namespaced:
+        args.append("-A")
+    args.extend(["-o", "json"])
+    output = kubectl(args, timeout=60)
+    return json.loads(output)
+
+
+def annotate_group_items(items, resource_infos, namespaced):
+    by_api_kind = {
+        (resource_info.get("apiVersion"), resource_info.get("kind")): resource_info
+        for resource_info in resource_infos
+        if resource_info.get("apiVersion") and resource_info.get("kind")
+    }
+    by_kind = {}
+    for resource_info in resource_infos:
+        kind = resource_info.get("kind")
+        if not kind:
+            continue
+        by_kind[kind] = resource_info if kind not in by_kind else None
+
+    annotated = []
+    for item in items:
+        resource_info = by_api_kind.get((item.get("apiVersion"), item.get("kind"))) or by_kind.get(item.get("kind"))
+        annotated.append(annotate_resource(item, resource_info, namespaced) if resource_info else item)
+    return annotated
+
+
+def get_api_resource_items(context, resource_infos, namespaced):
+    items = []
+    errors = []
+    for resource_group in chunks(resource_infos, RESOURCE_CHUNK_SIZE):
+        try:
+            payload = get_resource_group(context, resource_group, namespaced)
+            items.extend(annotate_group_items(payload_items(payload), resource_group, namespaced))
+            continue
+        except Exception as group_exc:
+            group_error = str(group_exc)
+
+        for resource_info in resource_group:
+            try:
+                payload = get_resource_group(context, [resource_info], namespaced)
+                items.extend(annotate_resource(item, resource_info, namespaced) for item in payload_items(payload))
+            except Exception as exc:
+                errors.append({"resource": resource_info["name"], "error": str(exc) or group_error})
+    return items, errors
+
+
+def load_cluster_resources(context):
+    namespaced = list_api_resources(context, True)
+    cluster = list_api_resources(context, False)
+    items = []
+    errors = []
+
+    namespaced_items, namespaced_errors = get_api_resource_items(context, namespaced, True)
+    cluster_items, cluster_errors = get_api_resource_items(context, cluster, False)
+    items.extend(namespaced_items)
+    items.extend(cluster_items)
+    errors.extend(namespaced_errors)
+    errors.extend(cluster_errors)
+
+    unique = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata") or {}
+        key = (
+            item.get("apiVersion") or "",
+            item.get("kind") or "",
+            metadata.get("namespace") or "",
+            metadata.get("name") or "",
+        )
+        unique[key] = item
+
+    sorted_items = sorted(
+        unique.values(),
+        key=lambda item: (
+            (item.get("kind") or "").lower(),
+            ((item.get("metadata") or {}).get("namespace") or "").lower(),
+            ((item.get("metadata") or {}).get("name") or "").lower(),
+        ),
+    )
+    return {
+        "apiVersion": "v1",
+        "kind": "List",
+        "metadata": {
+            "resourceErrors": errors,
+            "resourceTypes": {
+                "namespaced": [resource_info["name"] for resource_info in namespaced],
+                "cluster": [resource_info["name"] for resource_info in cluster],
+            },
+        },
+        "items": sorted_items,
+    }
 
 
 def read_preferences():
@@ -211,8 +371,7 @@ class Handler(SimpleHTTPRequestHandler):
             query = parse_qs(parsed.query)
             context = (query.get("context") or [""])[0]
             try:
-                output = kubectl([*context_args(context), "get", RESOURCE_TYPES, "-A", "-o", "json"])
-                payload = json.loads(output)
+                payload = load_cluster_resources(context)
                 self.write_json({"context": context or current_context(), "resources": payload})
             except Exception as exc:
                 self.write_json({"error": str(exc)}, status=502)

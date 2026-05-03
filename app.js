@@ -23,7 +23,9 @@ const state = {
   metricsTimer: null,
   metrics: { nodes: [], pods: [], errors: [] },
   metricSamples: [],
+  resourceErrors: [],
   resources: {
+    api: [],
     pods: [],
     deployments: [],
     services: [],
@@ -34,6 +36,7 @@ const state = {
 
 const views = {
   overview: { title: "Overview", kind: "overview" },
+  api: { title: "API Resources", kind: "api" },
   pods: { title: "Pods", kind: "pods" },
   deployments: { title: "Deployments", kind: "deployments" },
   services: { title: "Services", kind: "services" },
@@ -422,32 +425,47 @@ function parseInput() {
 }
 
 function ingest(payload) {
-  const buckets = { pods: [], deployments: [], services: [], nodes: [], events: [] };
+  const buckets = { api: [], pods: [], deployments: [], services: [], nodes: [], events: [] };
   const items = Array.isArray(payload.items) ? payload.items : [payload];
 
   items.forEach((item) => {
-    const kind = (item.kind || "").toLowerCase();
-    if (kind === "pod") buckets.pods.push(normalize(item, "pods"));
-    if (kind === "deployment") buckets.deployments.push(normalize(item, "deployments"));
-    if (kind === "service") buckets.services.push(normalize(item, "services"));
-    if (kind === "node") buckets.nodes.push(normalize(item, "nodes"));
-    if (kind === "event") buckets.events.push(normalize(item, "events"));
+    if (!item || typeof item !== "object" || !item.kind || item.kind === "List") return;
+    const type = knownResourceType(item);
+    const resource = normalize(item, type);
+    buckets.api.push(resource);
+    if (type !== "api") buckets[type].push(resource);
   });
 
   state.resources = buckets;
+  state.resourceErrors = Array.isArray(payload.metadata?.resourceErrors) ? payload.metadata.resourceErrors : [];
+  state.lastError = "";
+  state.loading = false;
   rebuildNamespaces();
+}
+
+function knownResourceType(item) {
+  return {
+    pod: "pods",
+    deployment: "deployments",
+    service: "services",
+    node: "nodes",
+    event: "events",
+  }[(item.kind || "").toLowerCase()] || "api";
 }
 
 function normalize(item, type) {
   const metadata = item.metadata || {};
   const namespace = metadata.namespace || "";
   const name = metadata.name || "(unnamed)";
+  const apiVersion = item.apiVersion || "";
+  const kind = item.kind || type;
   return {
-    key: `${type}:${namespace}:${name}`,
+    key: `${type}:${apiVersion}:${kind}:${namespace}:${name}`,
     type,
-    kind: item.kind || type,
+    kind,
     name,
     namespace,
+    apiVersion,
     labels: metadata.labels || {},
     created: metadata.creationTimestamp || "",
     raw: item,
@@ -551,7 +569,23 @@ function quickFilterOptions(view) {
       make("kind:deployments", "Deployments", { field: "resource", op: "=", value: "deployment" }),
       make("kind:services", "Services", { field: "resource", op: "=", value: "service" }),
       make("kind:nodes", "Nodes", { field: "resource", op: "=", value: "node" }),
+      make("kind:other", "Other", { field: "resource", op: "=", value: "api-other" }),
       make("status:warning", "Needs attention", { kind: "attention" }),
+    ];
+  }
+
+  if (view === "api") {
+    const counts = new Map();
+    rows.forEach((resource) => counts.set(resource.kind, (counts.get(resource.kind) || 0) + 1));
+    const kindFilters = [...counts.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], undefined, { sensitivity: "base" }))
+      .slice(0, 8)
+      .map(([kind]) => make(`api:${kind.toLowerCase()}`, kind, { field: "kind", op: "=", value: kind.toLowerCase() }));
+    return [
+      make("api:namespaced", "Namespaced", { field: "namespace", op: "!=", value: "cluster" }),
+      make("api:cluster", "Cluster", { field: "namespace", op: "=", value: "cluster" }),
+      make("api:attention", "Needs attention", { kind: "attention" }),
+      ...kindFilters,
     ];
   }
 
@@ -631,6 +665,9 @@ function renderCharts() {
   const warningPods = pods.filter((pod) => podStatus(pod).tone === "warn").length;
   const failedPods = pods.length - runningPods - warningPods;
   const metricError = state.metrics.errors?.[0] || "";
+  const knownResourceCount =
+    state.resources.pods.length + state.resources.deployments.length + state.resources.services.length + state.resources.nodes.length;
+  const otherResourceCount = Math.max(0, allResources().length - knownResourceCount);
 
   const requestSummary = resourceRequestSummary();
 
@@ -640,6 +677,7 @@ function renderCharts() {
       ["Deployments", state.resources.deployments.length, "#00acc1", { kind: "resource", value: "deployments", label: "Deployments" }],
       ["Services", state.resources.services.length, "#7e57c2", { kind: "resource", value: "services", label: "Services" }],
       ["Nodes", state.resources.nodes.length, "#43a047", { kind: "resource", value: "nodes", label: "Nodes" }],
+      ["Other", otherResourceCount, "#ff8a65", { kind: "resource", value: "api-other", label: "Other resources" }],
     ])}
     ${pieCard("Pod Status", [
       ["Running", runningPods, "#00a45a", { kind: "podStatus", value: "good", label: "Running pods" }],
@@ -1210,6 +1248,17 @@ function tableColumns(view) {
     ];
   }
 
+  if (view === "api") {
+    return [
+      nameColumn,
+      { id: "kind", label: "Kind", sort: (resource) => resource.kind, render: (resource) => escapeHtml(resource.kind) },
+      { id: "api", label: "API", sort: (resource) => resource.apiVersion, render: (resource) => escapeHtml(resource.apiVersion || "-") },
+      { id: "status", label: "Status", sort: (resource) => resourceStatusLabel(resource), render: overviewStatus },
+      { id: "namespace", label: "Namespace", sort: (resource) => resource.namespace || "", render: (resource) => escapeHtml(resource.namespace || "-") },
+      ageColumn,
+    ];
+  }
+
   return [
     nameColumn,
     { id: "status", label: "Status", sort: (resource) => overviewSort(resource), render: overviewStatus },
@@ -1353,6 +1402,7 @@ function resourceSearchText(resource) {
   return [
     resource.kind,
     resource.type,
+    resource.apiVersion,
     resource.name,
     resource.namespace,
     resourceStatusLabel(resource),
@@ -1377,11 +1427,15 @@ function resourceFilterMatches(resource, filter) {
 }
 
 function resourceFilterValue(resource, field) {
+  const knownTypes = ["pods", "deployments", "services", "nodes", "events"];
+  const resourceName = knownTypes.includes(resource.type) ? resource.type.replace(/s$/, "") : "api-other";
   const fields = {
     name: resource.name,
     kind: resource.kind,
-    type: [resource.type.replace(/s$/, ""), resource.raw.spec?.type, resource.raw.type].filter(Boolean).join(" "),
-    resource: resource.type.replace(/s$/, ""),
+    api: resource.apiVersion,
+    apiversion: resource.apiVersion,
+    type: [resource.kind, resourceName, resource.raw.spec?.type, resource.raw.type].filter(Boolean).join(" "),
+    resource: `${resource.kind} ${resourceName}`,
     namespace: resource.namespace || "cluster",
     ns: resource.namespace || "cluster",
     status: resourceStatusLabel(resource),
@@ -1446,6 +1500,12 @@ function resourceStatusLabel(resource) {
   if (resource.type === "nodes") return nodeStatus(resource).label;
   if (resource.type === "events") return eventStatus(resource).label;
   if (resource.type === "deployments") return deploymentReady(resource);
+  if (resource.raw.metadata?.deletionTimestamp) return "Terminating";
+  if (resource.raw.status?.phase) return resource.raw.status.phase;
+  if (resource.raw.status?.conditions?.length) {
+    const ready = resource.raw.status.conditions.find((condition) => condition.type === "Ready");
+    if (ready) return ready.status === "True" ? "Ready" : "Not ready";
+  }
   return "active";
 }
 
@@ -1455,7 +1515,10 @@ function chartFilterApplies() {
 
 function chartFilterMatches(resource) {
   if (!chartFilterApplies()) return true;
-  if (state.chartFilter.kind === "resource") return resource.type === state.chartFilter.value;
+  if (state.chartFilter.kind === "resource") {
+    if (state.chartFilter.value === "api-other") return !["pods", "deployments", "services", "nodes"].includes(resource.type);
+    return resource.type === state.chartFilter.value;
+  }
   if (state.chartFilter.kind === "podStatus") return resource.type === "pods" && podStatus(resource).tone === state.chartFilter.value;
   if (state.chartFilter.kind === "request") return resource.type === "pods" && podHasRequest(resource, state.chartFilter.value);
   if (state.chartFilter.kind === "allocatable") return resource.type === "nodes" && nodeHasAllocatable(resource, state.chartFilter.value);
@@ -2141,7 +2204,7 @@ function appendOutput(element, value) {
 }
 
 function allResources() {
-  return Object.values(state.resources).flat();
+  return state.resources.api || [];
 }
 
 function overviewStatus(resource) {
@@ -2153,7 +2216,7 @@ function overviewStatus(resource) {
     const desired = resource.raw.spec?.replicas || 0;
     return statusBadge({ label: `${ready}/${desired} ready`, tone: ready === desired ? "good" : "warn" });
   }
-  return statusBadge({ label: "Active", tone: "good" });
+  return statusBadge(genericStatus(resource));
 }
 
 function podStatus(resource) {
@@ -2174,6 +2237,14 @@ function eventStatus(resource) {
   return resource.raw.type === "Warning"
     ? { label: "Warning", tone: "warn" }
     : { label: resource.raw.type || "Normal", tone: "good" };
+}
+
+function genericStatus(resource) {
+  const label = resourceStatusLabel(resource);
+  const lowered = label.toLowerCase();
+  if (lowered.includes("terminating") || lowered.includes("failed") || lowered.includes("error")) return { label, tone: "bad" };
+  if (lowered.includes("pending") || lowered.includes("not ready") || lowered.includes("unknown")) return { label, tone: "warn" };
+  return { label: label === "active" ? "Active" : label, tone: "good" };
 }
 
 function statusBadge(status) {
@@ -2239,7 +2310,13 @@ function summarize(resource) {
       message: resource.raw.message,
     };
   }
-  return resource.raw;
+  return {
+    apiVersion: resource.apiVersion,
+    kind: resource.kind,
+    status: resource.raw.status,
+    spec: resource.raw.spec,
+    dataKeys: resource.raw.data ? Object.keys(resource.raw.data) : [],
+  };
 }
 
 function statusSummary(resource) {
@@ -2249,7 +2326,7 @@ function statusSummary(resource) {
   if (resource.type === "services") return serviceStatusSummary(summary);
   if (resource.type === "nodes") return nodeStatusSummary(summary);
   if (resource.type === "events") return eventStatusSummary(summary);
-  return `<pre class="code-line expanded">${escapeHtml(JSON.stringify(summary, null, 2))}</pre>`;
+  return genericStatusSummary(resource, summary);
 }
 
 function summaryRows(rows) {
@@ -2347,6 +2424,25 @@ function eventStatusSummary(summary) {
     ${summary.message ? `<p class="summary-message">${escapeHtml(summary.message)}</p>` : ""}`;
 }
 
+function genericStatusSummary(resource, summary) {
+  const spec = summary.spec || {};
+  const status = summary.status || {};
+  const conditions = Array.isArray(status.conditions) ? status.conditions : [];
+  const rows = [
+    ["Kind", resource.kind],
+    ["API", resource.apiVersion || "-"],
+    ["Status", resourceStatusLabel(resource)],
+  ];
+  if (resource.kind === "Secret") rows.push(["Data keys", summary.dataKeys.length]);
+  if (resource.kind === "ConfigMap") rows.push(["Data keys", summary.dataKeys.length]);
+  if (spec.replicas !== undefined || status.readyReplicas !== undefined) rows.push(["Replicas", `${status.readyReplicas || 0}/${spec.replicas || 0} ready`]);
+  if (spec.type) rows.push(["Type", spec.type]);
+  return `
+    ${summaryRows(rows)}
+    ${summaryList("Conditions", conditions.map(formatCondition))}
+  `;
+}
+
 function summaryList(title, items) {
   const visible = items.filter(Boolean).map((item) => (typeof item === "string" ? { label: item } : item));
   if (!visible.length) return "";
@@ -2407,13 +2503,13 @@ function formatRuntime(value) {
 }
 
 function kubectlKind(resource) {
-  return {
+  return resource.raw._kdResource?.name || {
     pods: "pod",
     deployments: "deployment",
     services: "service",
     nodes: "node",
     events: "event",
-  }[resource.type];
+  }[resource.type] || resource.kind.toLowerCase();
 }
 
 function age(timestamp) {
