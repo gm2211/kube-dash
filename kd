@@ -23,7 +23,10 @@ SNAPSHOT="${KD_SNAPSHOT:-$APP_DIR/snapshot.json}"
 
 usage() {
   cat <<'USAGE'
-Usage: kd [option]
+Usage: kd [command] [option]
+
+Commands:
+  update         Update kube-dash to the latest main branch.
 
 Options:
   --serve         Start the local kubectl dashboard. This is the default.
@@ -94,10 +97,32 @@ serve() {
   wait "$server_pid"
 }
 
+update_kd() {
+  if ! command -v git >/dev/null 2>&1; then
+    printf 'kd: git is required for update.\n' >&2
+    exit 1
+  fi
+
+  if [ ! -d "$APP_DIR/.git" ]; then
+    printf 'kd: %s is not a git checkout. Reinstall with the Quick Install command.\n' "$APP_DIR" >&2
+    exit 1
+  fi
+
+  git -C "$APP_DIR" fetch --prune origin
+  git -C "$APP_DIR" checkout main
+  git -C "$APP_DIR" pull --ff-only origin main
+  chmod +x "$APP_DIR/kd" "$APP_DIR/kd-server.py"
+  printf 'kube-dash updated at %s\n' "$APP_DIR"
+}
+
 mode="serve"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    update)
+      mode="update"
+      shift
+      ;;
     --collect)
       mode="collect"
       shift
@@ -147,5 +172,8 @@ case "$mode" in
     ;;
   file)
     open_url "$APP_DIR/index.html"
+    ;;
+  update)
+    update_kd
     ;;
 esac

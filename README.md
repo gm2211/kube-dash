@@ -8,7 +8,7 @@ A local, client-side Kubernetes dashboard powered by your local `kubectl`. It se
 
 ## Quick Install
 
-Install or update `kd` with:
+Install `kd` with:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/gm2211/kube-dash/main/install.sh | bash
@@ -28,7 +28,7 @@ If your shell cannot find `kd`, add `~/.local/bin` to your `PATH`.
 Update to the latest `main`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/gm2211/kube-dash/main/install.sh | bash -s -- --update
+kd update
 ```
 
 If you cloned the repo manually, you can also update with:
