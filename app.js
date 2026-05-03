@@ -24,6 +24,7 @@ const state = {
   metrics: { nodes: [], pods: [], errors: [] },
   metricSamples: [],
   resourceErrors: [],
+  helperCapability: "",
   resources: {
     api: [],
     pods: [],
@@ -451,6 +452,7 @@ function ingest(payload) {
 
   state.resources = buckets;
   state.resourceErrors = Array.isArray(payload.metadata?.resourceErrors) ? payload.metadata.resourceErrors : [];
+  state.helperCapability = payload.metadata?.kdHelper?.capability || (payload.metadata?.resourceTypes ? "all-cluster-objects" : "legacy-core-only");
   state.lastError = "";
   state.loading = false;
   rebuildNamespaces();
@@ -1041,12 +1043,19 @@ function renderTable() {
   }
 
   if (!sortedRows.length) {
+    const staleHelper = state.apiAvailable && state.helperCapability === "legacy-core-only" && isGenericObjectView(view);
     selectors.tableBody.innerHTML = `
       <tr>
         <td colspan="${columns.length}">
           <div class="empty-table">
-            <strong>No resources found</strong>
-            <span>${state.apiAvailable ? "This context returned no resources for this view." : "Run kd to load resources automatically."}</span>
+            <strong>${staleHelper ? "Restart kd to load this section" : "No resources found"}</strong>
+            <span>${
+              staleHelper
+                ? "The browser is showing the new UI, but the running helper is still the older core-resource collector."
+                : state.apiAvailable
+                  ? "This context returned no resources for this view."
+                  : "Run kd to load resources automatically."
+            }</span>
           </div>
         </td>
       </tr>`;

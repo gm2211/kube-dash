@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+HELPER_CAPABILITY = "all-cluster-objects"
 CONFIG_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "kube-dash")
 PREFERENCES_PATH = os.path.join(CONFIG_DIR, "preferences.json")
 DEFAULT_PREFERENCES = {"groupByPrefix": True}
@@ -249,6 +250,7 @@ def load_cluster_resources(context):
         "apiVersion": "v1",
         "kind": "List",
         "metadata": {
+            "kdHelper": {"capability": HELPER_CAPABILITY},
             "resourceErrors": errors,
             "resourceTypes": {
                 "namespaced": [resource_info["name"] for resource_info in namespaced],
