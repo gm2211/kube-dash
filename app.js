@@ -36,11 +36,24 @@ const state = {
 
 const views = {
   overview: { title: "Overview", kind: "overview" },
-  api: { title: "API Resources", kind: "api" },
-  pods: { title: "Pods", kind: "pods" },
-  deployments: { title: "Deployments", kind: "deployments" },
-  services: { title: "Services", kind: "services" },
-  nodes: { title: "Nodes", kind: "nodes" },
+  allobjects: { title: "All Cluster Objects", kind: "allobjects", all: true },
+  namespaces: { title: "Namespaces", kind: "namespaces", kinds: ["Namespace"], clusterScoped: true },
+  nodes: { title: "Nodes", kind: "nodes", kinds: ["Node"], clusterScoped: true },
+  persistentvolumes: { title: "Persistent Volumes", kind: "persistentvolumes", kinds: ["PersistentVolume"], clusterScoped: true },
+  roles: { title: "Roles", kind: "roles", kinds: ["Role", "ClusterRole"] },
+  storageclasses: { title: "Storage Classes", kind: "storageclasses", kinds: ["StorageClass"], clusterScoped: true },
+  cronjobs: { title: "Cron Jobs", kind: "cronjobs", kinds: ["CronJob"] },
+  daemonsets: { title: "Daemon Sets", kind: "daemonsets", kinds: ["DaemonSet"] },
+  deployments: { title: "Deployments", kind: "deployments", kinds: ["Deployment"] },
+  jobs: { title: "Jobs", kind: "jobs", kinds: ["Job"] },
+  pods: { title: "Pods", kind: "pods", kinds: ["Pod"] },
+  replicasets: { title: "Replica Sets", kind: "replicasets", kinds: ["ReplicaSet"] },
+  statefulsets: { title: "Stateful Sets", kind: "statefulsets", kinds: ["StatefulSet"] },
+  configmaps: { title: "Config Maps", kind: "configmaps", kinds: ["ConfigMap"] },
+  secrets: { title: "Secrets", kind: "secrets", kinds: ["Secret"] },
+  ingresses: { title: "Ingresses", kind: "ingresses", kinds: ["Ingress"] },
+  services: { title: "Services", kind: "services", kinds: ["Service"] },
+  endpointslices: { title: "Endpoint Slices", kind: "endpointslices", kinds: ["EndpointSlice"] },
   events: { title: "Events", kind: "events" },
   commands: { title: "Commands", kind: "commands" },
 };
@@ -488,7 +501,7 @@ function render() {
   selectors.viewTitle.textContent = view.title;
   selectors.tableTitle.textContent = view.title === "Commands" ? "Command cookbook" : view.title;
   selectors.searchInput.disabled = view.kind === "commands";
-  selectors.namespaceFilter.disabled = view.kind === "nodes" || view.kind === "commands";
+  selectors.namespaceFilter.disabled = Boolean(view.clusterScoped) || view.kind === "commands";
   selectors.loadButton.hidden = state.apiAvailable;
   selectors.importPanel.classList.toggle("collapsed", state.apiAvailable || allResources().length > 0);
   selectors.charts.classList.toggle("collapsed", view.kind !== "overview");
@@ -574,19 +587,8 @@ function quickFilterOptions(view) {
     ];
   }
 
-  if (view === "api") {
-    const counts = new Map();
-    rows.forEach((resource) => counts.set(resource.kind, (counts.get(resource.kind) || 0) + 1));
-    const kindFilters = [...counts.entries()]
-      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], undefined, { sensitivity: "base" }))
-      .slice(0, 8)
-      .map(([kind]) => make(`api:${kind.toLowerCase()}`, kind, { field: "kind", op: "=", value: kind.toLowerCase() }));
-    return [
-      make("api:namespaced", "Namespaced", { field: "namespace", op: "!=", value: "cluster" }),
-      make("api:cluster", "Cluster", { field: "namespace", op: "=", value: "cluster" }),
-      make("api:attention", "Needs attention", { kind: "attention" }),
-      ...kindFilters,
-    ];
+  if (isGenericObjectView(view)) {
+    return genericQuickFilterOptions(view, rows, make);
   }
 
   if (view === "pods") {
@@ -630,6 +632,37 @@ function quickFilterOptions(view) {
   return [];
 }
 
+function genericQuickFilterOptions(view, rows, make) {
+  const viewConfig = viewByKind(view);
+  const statusCounts = new Map();
+  const kindCounts = new Map();
+  const namespaceCounts = new Map();
+
+  rows.forEach((resource) => {
+    statusCounts.set(resourceStatusLabel(resource), (statusCounts.get(resourceStatusLabel(resource)) || 0) + 1);
+    kindCounts.set(resource.kind, (kindCounts.get(resource.kind) || 0) + 1);
+    if (resource.namespace) namespaceCounts.set(resource.namespace, (namespaceCounts.get(resource.namespace) || 0) + 1);
+  });
+
+  const topEntries = (counts, limit = 6) =>
+    [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], undefined, { sensitivity: "base" })).slice(0, limit);
+
+  const filters = [
+    make(`${view}:namespaced`, "Namespaced", { field: "namespace", op: "!=", value: "cluster" }),
+    make(`${view}:cluster`, "Cluster", { field: "namespace", op: "=", value: "cluster" }),
+    make(`${view}:attention`, "Needs attention", { kind: "attention" }),
+  ];
+
+  if (viewConfig?.all || (viewConfig?.kinds || []).length > 1) {
+    topEntries(kindCounts, 8).forEach(([kind]) => filters.push(make(`${view}:kind:${kind}`, kind, { field: "kind", op: "=", value: kind.toLowerCase() })));
+  }
+  topEntries(statusCounts, 4).forEach(([status]) => filters.push(make(`${view}:status:${status}`, status, { field: "status", op: ":", value: status.toLowerCase() })));
+  topEntries(namespaceCounts, 4).forEach(([namespace]) =>
+    filters.push(make(`${view}:namespace:${namespace}`, namespace, { field: "namespace", op: "=", value: namespace.toLowerCase() })),
+  );
+  return filters;
+}
+
 function isQuickFilterActive(option) {
   return state.quickFilters.some((filter) => filter.id === option.id);
 }
@@ -649,7 +682,7 @@ function quickFilterMatches(resource, filter) {
     if (resource.type === "events") return eventStatus(resource).tone !== "good";
     if (resource.type === "deployments") return deploymentReadySort(resource)[0] < 1;
     if (resource.type === "nodes") return nodeStatus(resource).tone !== "good";
-    return false;
+    return genericStatus(resource).tone !== "good";
   }
   if (filter.kind === "podTone") return resource.type === "pods" && podStatus(resource).tone === filter.value;
   if (filter.kind === "deploymentReady") return resource.type === "deployments" && (deploymentReadySort(resource)[0] >= 1) === filter.value;
@@ -1248,13 +1281,14 @@ function tableColumns(view) {
     ];
   }
 
-  if (view === "api") {
+  if (isGenericObjectView(view)) {
+    const showKind = viewByKind(view)?.all || (viewByKind(view)?.kinds || []).length > 1;
     return [
       nameColumn,
-      { id: "kind", label: "Kind", sort: (resource) => resource.kind, render: (resource) => escapeHtml(resource.kind) },
-      { id: "api", label: "API", sort: (resource) => resource.apiVersion, render: (resource) => escapeHtml(resource.apiVersion || "-") },
+      ...(showKind ? [{ id: "kind", label: "Kind", sort: (resource) => resource.kind, render: (resource) => escapeHtml(resource.kind) }] : []),
       { id: "status", label: "Status", sort: (resource) => resourceStatusLabel(resource), render: overviewStatus },
       { id: "namespace", label: "Namespace", sort: (resource) => resource.namespace || "", render: (resource) => escapeHtml(resource.namespace || "-") },
+      { id: "api", label: "API", sort: (resource) => resource.apiVersion, render: (resource) => escapeHtml(resource.apiVersion || "-") },
       ageColumn,
     ];
   }
@@ -1368,12 +1402,30 @@ function filteredResources(kind) {
 }
 
 function baseFilteredResources(kind) {
-  const resources = kind === "all" ? allResources() : state.resources[kind] || [];
+  const resources = resourcesForView(kind);
   const query = parseSearchQuery(state.search);
   return resources.filter((resource) => {
     const inNamespace = state.namespace === "all" || !resource.namespace || resource.namespace === state.namespace;
     return inNamespace && chartFilterMatches(resource) && searchMatches(resource, query);
   });
+}
+
+function resourcesForView(kind) {
+  if (kind === "all" || kind === "allobjects") return allResources();
+  if (state.resources[kind]) return state.resources[kind];
+  const view = viewByKind(kind);
+  if (!view?.kinds?.length) return [];
+  const allowed = new Set(view.kinds);
+  return allResources().filter((resource) => allowed.has(resource.kind));
+}
+
+function viewByKind(kind) {
+  return Object.values(views).find((view) => view.kind === kind);
+}
+
+function isGenericObjectView(kind) {
+  const view = viewByKind(kind);
+  return Boolean(view && view.kind !== "overview" && view.kind !== "commands" && !state.resources[kind]);
 }
 
 function parseSearchQuery(query) {

@@ -2,7 +2,7 @@
 
 A local, client-side Kubernetes dashboard powered by your local `kubectl`. It serves a browser UI on localhost and uses your local `kubectl` config to read cluster resources.
 
-Use the focused pages for common resources, or open **API Resources** to browse every listable Kubernetes API type your kubeconfig can access, including ConfigMaps, Secrets, CRDs, and custom resources.
+Use the dedicated resource pages for common Kubernetes types, or open **All Cluster Objects** to browse every listable API type your kubeconfig can access, including ConfigMaps, Secrets, CRDs, and custom resources.
 
 ## Screenshots
 
