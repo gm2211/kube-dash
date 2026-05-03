@@ -60,13 +60,13 @@ kd --port 9000
 kd --file
 ```
 
-If you open `index.html` directly without `kd`, you can still use fallback import mode:
+If you open `index.html` directly without `kd`, the dashboard shows a fallback import panel:
 
 ```sh
 kubectl get pods,deployments,services,nodes,events -A -o json
 ```
 
-Paste the JSON into the import panel. The dashboard parses pods, deployments, services, nodes, and events, then generates copyable `kubectl` commands for reads and actions.
+Paste the JSON into the import panel. The dashboard parses pods, deployments, services, nodes, and events, then generates copyable `kubectl` commands for reads and actions. When the local `kd` helper is connected, this fallback import control is hidden because resources load automatically.
 
 ## Why commands are copyable
 

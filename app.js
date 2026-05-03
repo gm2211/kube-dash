@@ -51,6 +51,7 @@ const selectors = {
   stats: document.querySelector("#stats"),
   searchInput: document.querySelector("#searchInput"),
   groupToggle: document.querySelector("#groupToggle"),
+  loadButton: document.querySelector("#loadButton"),
   namespaceFilter: document.querySelector("#namespaceFilter"),
   importPanel: document.querySelector("#importPanel"),
   jsonInput: document.querySelector("#jsonInput"),
@@ -122,7 +123,7 @@ function bindEvents() {
     });
   });
 
-  document.querySelector("#loadButton").addEventListener("click", () => {
+  selectors.loadButton.addEventListener("click", () => {
     selectors.importPanel.classList.toggle("collapsed");
     if (!selectors.importPanel.classList.contains("collapsed")) {
       selectors.jsonInput.focus();
@@ -467,6 +468,7 @@ function render() {
   selectors.tableTitle.textContent = view.title === "Commands" ? "Command cookbook" : view.title;
   selectors.searchInput.disabled = view.kind === "commands";
   selectors.namespaceFilter.disabled = view.kind === "nodes" || view.kind === "commands";
+  selectors.loadButton.hidden = state.apiAvailable;
   selectors.importPanel.classList.toggle("collapsed", state.apiAvailable || allResources().length > 0);
   selectors.charts.classList.toggle("collapsed", view.kind !== "overview");
   renderCharts();
