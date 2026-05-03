@@ -1,6 +1,7 @@
 const state = {
   view: "overview",
   search: "",
+  quickFilters: [],
   namespace: "all",
   sorts: {},
   groupByPrefix: localStorage.getItem("kd-group-by-prefix") !== "false",
@@ -50,6 +51,7 @@ const selectors = {
   charts: document.querySelector("#charts"),
   stats: document.querySelector("#stats"),
   searchInput: document.querySelector("#searchInput"),
+  quickFilters: document.querySelector("#quickFilters"),
   groupToggle: document.querySelector("#groupToggle"),
   loadButton: document.querySelector("#loadButton"),
   namespaceFilter: document.querySelector("#namespaceFilter"),
@@ -117,6 +119,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       state.view = button.dataset.view;
       state.selectedKey = null;
+      state.quickFilters = [];
       document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item === button));
       state.chartFilter = null;
       render();
@@ -473,6 +476,7 @@ function render() {
   selectors.charts.classList.toggle("collapsed", view.kind !== "overview");
   renderCharts();
   renderStats();
+  renderQuickFilters();
   renderTable();
   renderDetails();
 }
@@ -492,6 +496,131 @@ function renderStats() {
   selectors.stats.innerHTML = stats
     .map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`)
     .join("");
+}
+
+function renderQuickFilters() {
+  const view = views[state.view].kind;
+  if (!selectors.quickFilters) return;
+  if (view === "commands") {
+    selectors.quickFilters.classList.add("collapsed");
+    selectors.quickFilters.innerHTML = "";
+    return;
+  }
+
+  const options = quickFilterOptions(view);
+  const visible = options.filter((option) => option.count > 0 || isQuickFilterActive(option));
+  selectors.quickFilters.classList.toggle("collapsed", !visible.length);
+  if (!visible.length) {
+    selectors.quickFilters.innerHTML = "";
+    return;
+  }
+
+  selectors.quickFilters.innerHTML = `
+    <span>Quick filters</span>
+    <div>
+      ${visible
+        .map((option) => {
+          const active = isQuickFilterActive(option) ? " active" : "";
+          return `<button class="quick-filter${active}" type="button" data-filter-id="${escapeHtml(option.id)}">${escapeHtml(option.label)} <strong>${option.count}</strong></button>`;
+        })
+        .join("")}
+      ${state.quickFilters.length ? `<button class="quick-filter clear" type="button" data-clear-filters="true">Clear</button>` : ""}
+    </div>`;
+
+  selectors.quickFilters.querySelectorAll("[data-filter-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const option = options.find((item) => item.id === button.dataset.filterId);
+      if (!option) return;
+      toggleQuickFilter(option);
+      render();
+    });
+  });
+  selectors.quickFilters.querySelector("[data-clear-filters]")?.addEventListener("click", () => {
+    state.quickFilters = [];
+    render();
+  });
+}
+
+function quickFilterOptions(view) {
+  const rows = baseFilteredResources(view === "overview" ? "all" : view);
+  const make = (id, label, filter) => ({ id, label, filter, count: rows.filter((resource) => quickFilterMatches(resource, filter)).length });
+
+  if (view === "overview") {
+    return [
+      make("kind:pods", "Pods", { field: "resource", op: "=", value: "pod" }),
+      make("kind:deployments", "Deployments", { field: "resource", op: "=", value: "deployment" }),
+      make("kind:services", "Services", { field: "resource", op: "=", value: "service" }),
+      make("kind:nodes", "Nodes", { field: "resource", op: "=", value: "node" }),
+      make("status:warning", "Needs attention", { kind: "attention" }),
+    ];
+  }
+
+  if (view === "pods") {
+    return [
+      make("pod:running", "Running", { field: "status", op: ":", value: "running" }),
+      make("pod:waiting", "Waiting", { kind: "podTone", value: "warn" }),
+      make("pod:failed", "Failed", { kind: "podTone", value: "bad" }),
+      make("pod:restarts", "Restarts", { field: "restarts", op: ">", value: "0" }),
+    ];
+  }
+
+  if (view === "deployments") {
+    return [
+      make("deploy:ready", "Ready", { kind: "deploymentReady", value: true }),
+      make("deploy:not-ready", "Not ready", { kind: "deploymentReady", value: false }),
+    ];
+  }
+
+  if (view === "services") {
+    return [
+      make("svc:clusterip", "ClusterIP", { field: "type", op: ":", value: "clusterip" }),
+      make("svc:loadbalancer", "LoadBalancer", { field: "type", op: ":", value: "loadbalancer" }),
+      make("svc:nodeport", "NodePort", { field: "type", op: ":", value: "nodeport" }),
+    ];
+  }
+
+  if (view === "nodes") {
+    return [
+      make("node:ready", "Ready", { kind: "nodeReady", value: true }),
+      make("node:not-ready", "Not ready", { kind: "nodeReady", value: false }),
+    ];
+  }
+
+  if (view === "events") {
+    return [
+      make("event:warning", "Warnings", { field: "type", op: ":", value: "warning" }),
+      make("event:normal", "Normal", { field: "type", op: ":", value: "normal" }),
+    ];
+  }
+
+  return [];
+}
+
+function isQuickFilterActive(option) {
+  return state.quickFilters.some((filter) => filter.id === option.id);
+}
+
+function toggleQuickFilter(option) {
+  if (isQuickFilterActive(option)) {
+    state.quickFilters = state.quickFilters.filter((filter) => filter.id !== option.id);
+  } else {
+    state.quickFilters = [...state.quickFilters, { id: option.id, filter: option.filter }];
+  }
+  state.selectedKey = null;
+}
+
+function quickFilterMatches(resource, filter) {
+  if (filter.kind === "attention") {
+    if (resource.type === "pods") return podStatus(resource).tone !== "good";
+    if (resource.type === "events") return eventStatus(resource).tone !== "good";
+    if (resource.type === "deployments") return deploymentReadySort(resource)[0] < 1;
+    if (resource.type === "nodes") return nodeStatus(resource).tone !== "good";
+    return false;
+  }
+  if (filter.kind === "podTone") return resource.type === "pods" && podStatus(resource).tone === filter.value;
+  if (filter.kind === "deploymentReady") return resource.type === "deployments" && (deploymentReadySort(resource)[0] >= 1) === filter.value;
+  if (filter.kind === "nodeReady") return resource.type === "nodes" && (nodeStatus(resource).tone === "good") === filter.value;
+  return resourceFilterMatches(resource, filter);
 }
 
 function renderCharts() {
@@ -1186,6 +1315,10 @@ function ipSort(value) {
 }
 
 function filteredResources(kind) {
+  return baseFilteredResources(kind).filter((resource) => state.quickFilters.every((filter) => quickFilterMatches(resource, filter.filter)));
+}
+
+function baseFilteredResources(kind) {
   const resources = kind === "all" ? allResources() : state.resources[kind] || [];
   const query = parseSearchQuery(state.search);
   return resources.filter((resource) => {

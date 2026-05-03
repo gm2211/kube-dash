@@ -361,6 +361,7 @@ select:disabled {
 .import-panel,
 .charts,
 .stats,
+.quick-filters,
 .content-grid {
   margin-left: 24px;
   margin-right: 24px;
@@ -452,6 +453,69 @@ textarea {
   gap: 16px;
   margin-top: 18px;
   margin-bottom: 18px;
+}
+
+.quick-filters {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: -2px;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.quick-filters > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.quick-filters > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.quick-filter {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.quick-filter strong {
+  margin-left: 6px;
+  color: var(--heading);
+  font-weight: 700;
+}
+
+.quick-filter:hover,
+.quick-filter:focus-visible,
+.quick-filter.active {
+  border-color: var(--accent);
+  background: rgba(90, 199, 223, 0.1);
+  color: var(--heading);
+}
+
+.quick-filter.active {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.quick-filter.clear {
+  color: var(--accent);
 }
 
 .charts {
@@ -2154,13 +2218,15 @@ tbody tr.selected {
 .import-panel,
 .charts,
 .stats,
+.quick-filters,
 .content-grid {
   margin-left: 18px;
   margin-right: 18px;
 }
 
 .charts,
-.stats {
+.stats,
+.quick-filters {
   gap: 12px;
 }
 
