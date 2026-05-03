@@ -46,5 +46,3 @@ To use another port:
 ```sh
 kd --port 9000
 ```
-
-The dashboard can show pods, deployments, services, nodes, events, charts, logs, shell, describe output, YAML edit/apply, and other kubectl-backed actions.
