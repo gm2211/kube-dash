@@ -1426,6 +1426,20 @@ tbody tr.group-row:hover {
   gap: 14px;
 }
 
+.run-dialog {
+  width: min(920px, calc(100vw - 40px));
+  height: auto;
+  max-height: min(560px, calc(100vh - 48px));
+}
+
+.run-dialog[open] {
+  grid-template-rows: auto minmax(180px, 1fr) auto;
+}
+
+.run-dialog .terminal-output {
+  max-height: min(340px, calc(100vh - 220px));
+}
+
 .terminal-output {
   margin: 0;
   padding: 14px;
