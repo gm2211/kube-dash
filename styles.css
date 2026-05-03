@@ -2127,25 +2127,6 @@ tbody tr.selected {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 14px;
-}
-
-.chrome-nav {
-  display: inline-flex;
-  gap: 6px;
-  color: var(--muted-soft);
-  font-size: 1.25rem;
-  line-height: 1;
-}
-
-.chrome-nav span {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(90, 199, 223, 0.12);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.025);
 }
 
 .toolbar {
@@ -2308,7 +2289,4 @@ th {
     align-items: flex-start;
   }
 
-  .chrome-nav {
-    display: none;
-  }
 }
