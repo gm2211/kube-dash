@@ -61,6 +61,7 @@ scan_rc_aliases() {
     "$HOME/.zsh_aliases"
     "$HOME/.profile"
     "$HOME/.aliases"
+    "$HOME/.kubectl_aliases"
     "$HOME/.config/fish/config.fish"
   )
   for rc in "${files[@]}"; do
@@ -235,17 +236,12 @@ install_or_update() {
     printf 'kube-dash: detected existing install as "%s"; reusing.\n' "$BIN_NAME" >&2
   fi
 
-  # Resolve final name (may prompt on conflict). If the chosen name already
-  # matches a prior symlink, skip the conflict check — it was already resolved.
-  local final_name skip_conflict=0
-  for n in "${prior_names[@]}"; do
-    if [ "$n" = "$BIN_NAME" ]; then
-      skip_conflict=1
-      break
-    fi
-  done
-
-  if [ "$skip_conflict" = "1" ]; then
+  # Resolve final name (may prompt on conflict). Only skip the conflict check
+  # when the user explicitly passed --name / KUBE_DASH_BIN_NAME — they know
+  # what they want. When the name was auto-detected from a prior install we
+  # still run the check: alias-detection may have been added after that install.
+  local final_name
+  if [ "$BIN_NAME_EXPLICIT" = "1" ]; then
     final_name="$BIN_NAME"
   else
     final_name="$(resolve_bin_name "$BIN_NAME")"
