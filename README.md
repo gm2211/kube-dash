@@ -25,6 +25,25 @@ kd
 The installer clones kube-dash into `~/.kube-dash` and links `kd` into `~/.local/bin`.
 If your shell cannot find `kd`, add `~/.local/bin` to your `PATH`.
 
+### Picking a different command name
+
+Many shells preload the alias `kd=kubectl describe`, which would shadow the
+kube-dash command. The installer detects this and offers to install under a
+different name (e.g. `kdash`, `kubedash`). You can also pick a name up front:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/gm2211/kube-dash/main/install.sh | bash -s -- --name kdash
+```
+
+Or set the env var:
+
+```sh
+KUBE_DASH_BIN_NAME=kdash curl -fsSL https://raw.githubusercontent.com/gm2211/kube-dash/main/install.sh | bash
+```
+
+Re-running the installer is idempotent — if you already installed under
+`kdash`, running it again with no args reuses the same name.
+
 ## Quick Update
 
 Update to the latest `main`:
